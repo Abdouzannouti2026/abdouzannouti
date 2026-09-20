@@ -347,6 +347,7 @@ export interface CompanySettings {
     showUnitInPDF?: boolean;
     defaultTva?: number;
     defaultThermalTicketWidth?: '80mm' | '58mm';
+    documentFontSize?: number; // Échelle de taille de texte des documents en % (ex: 85, 100, 115, 130)
 }
 
 export interface Employee {

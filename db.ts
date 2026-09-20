@@ -35,7 +35,8 @@ const LOCAL_STORAGE_KEYS = {
     SHOW_TABLE_BORDERS: 'facturago_show_table_borders',
     CLIENT_POSITION: 'facturago_client_position',
     DEFAULT_CURRENCY_CODE: 'settings_default_currency_code',
-    DEFAULT_TVA: 'settings_default_tva'
+    DEFAULT_TVA: 'settings_default_tva',
+    DOCUMENT_FONT_SIZE: 'facturago_document_font_size'
 };
 
 export const initDB = async (): Promise<any> => {
@@ -1017,6 +1018,15 @@ export const dbService = {
                             settings.defaultTva = 20;
                         }
 
+                        const localFontSize = localStorage.getItem(LOCAL_STORAGE_KEYS.DOCUMENT_FONT_SIZE);
+                        if (localFontSize !== null) {
+                            settings.documentFontSize = parseInt(localFontSize, 10);
+                        } else if (dbCustom.documentFontSize !== undefined) {
+                            settings.documentFontSize = dbCustom.documentFontSize;
+                        } else if (settings.documentFontSize === undefined) {
+                            settings.documentFontSize = 100;
+                        }
+
                         try {
                             localStorage.setItem('facturago_company_settings', JSON.stringify(settings));
                             localStorage.setItem(LOCAL_STORAGE_KEYS.SHOW_AMOUNT_IN_WORDS, String(settings.showAmountInWords));
@@ -1040,6 +1050,7 @@ export const dbService = {
                             localStorage.setItem(LOCAL_STORAGE_KEYS.CLIENT_POSITION, settings.clientPosition || 'right');
                             localStorage.setItem(LOCAL_STORAGE_KEYS.DEFAULT_CURRENCY_CODE, settings.defaultCurrencyCode || 'MAD');
                             localStorage.setItem(LOCAL_STORAGE_KEYS.DEFAULT_TVA, String(settings.defaultTva ?? 20));
+                            localStorage.setItem(LOCAL_STORAGE_KEYS.DOCUMENT_FONT_SIZE, String(settings.documentFontSize ?? 100));
                         } catch (storageErr) {
                             console.error("Failed to write loaded settings to localStorage", storageErr);
                         }
@@ -1134,6 +1145,9 @@ export const dbService = {
                 if (settings.defaultTva !== undefined) {
                     localStorage.setItem(LOCAL_STORAGE_KEYS.DEFAULT_TVA, String(settings.defaultTva));
                 }
+                if (settings.documentFontSize !== undefined) {
+                    localStorage.setItem(LOCAL_STORAGE_KEYS.DOCUMENT_FONT_SIZE, String(settings.documentFontSize));
+                }
             } catch (e) {
                 console.error("Error saving to localStorage in db.ts:", e);
             }
@@ -1161,7 +1175,8 @@ export const dbService = {
                     showTableBorders: settings.showTableBorders,
                     clientPosition: settings.clientPosition,
                     defaultCurrencyCode: settings.defaultCurrencyCode,
-                    defaultTva: settings.defaultTva
+                    defaultTva: settings.defaultTva,
+                    documentFontSize: settings.documentFontSize
                 };
                 
                 const { data: existingRow, error: fetchError } = await supabase
@@ -1231,7 +1246,8 @@ export const dbService = {
                     showTableBorders: settings.showTableBorders,
                     clientPosition: settings.clientPosition,
                     defaultCurrencyCode: settings.defaultCurrencyCode,
-                    defaultTva: settings.defaultTva
+                    defaultTva: settings.defaultTva,
+                    documentFontSize: settings.documentFontSize
                 };
                 return finalResult;
             } catch (err: any) {

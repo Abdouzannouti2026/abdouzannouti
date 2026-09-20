@@ -42,9 +42,10 @@ export interface DocumentData {
   showDimensions?: boolean;
 }
 
-interface PDFOptions {
+export interface PDFOptions {
   showPrices?: boolean;
   isPDFDownload?: boolean;
+  fontSize?: number | "compact" | "small" | "normal" | "large" | "xlarge";
 }
 
 export type DocumentType =
@@ -285,6 +286,21 @@ export const generateDocumentHTML = (
   const showPrices = options?.showPrices !== false;
   const showAmountInWords = settings.showAmountInWords !== false;
   const isModeTTC = settings.priceDisplayMode === "TTC";
+
+  // Dynamic font sizing scale for all documents (Invoices, Quotes, Delivery Notes, POs, etc.)
+  const fontScale = (() => {
+    const optVal = options?.fontSize ?? settings.documentFontSize;
+    if (typeof optVal === "number" && optVal > 0) {
+      return Math.max(0.7, Math.min(1.5, optVal / 100));
+    }
+    if (optVal === "compact" || optVal === "small") return 0.85;
+    if (optVal === "large") return 1.15;
+    if (optVal === "xlarge") return 1.3;
+    return 1.0;
+  })();
+
+  const fs = (basePx: number): string => `${Math.round(basePx * fontScale * 10) / 10}px`;
+
   const lineItems = Array.isArray(doc.lineItems) ? doc.lineItems : [];
   const calculationMode = lineItems[0]?.calculationMode || "piece";
   const legacyShowDimensions =
@@ -700,7 +716,7 @@ export const generateDocumentHTML = (
 
   const logoHtml = settings.logo
     ? `<img src="${settings.logo}" style="max-height: 120px; max-width: ${settings.logoWidth || 200}px; object-fit: contain;" />`
-    : `<h1 style="font-size: 24px; font-weight: bold; color: ${primaryColor}; margin: 0;">${settings.companyName}</h1>`;
+    : `<h1 style="font-size: ${fs(24)}; font-weight: bold; color: ${primaryColor}; margin: 0;">${settings.companyName}</h1>`;
 
   const recipientName = recipient.name;
   const recipientCompany = recipient.company
@@ -803,7 +819,7 @@ export const generateDocumentHTML = (
       const isLast = idx === activeColumns.length - 1;
       const borderStyle = "";
 
-      return `<th style="padding: ${options?.isPDFDownload ? "6px 12px 14px 12px" : "10px 12px"}; text-align: ${align}; vertical-align: middle; line-height: 1.2; font-size: 11px; text-transform: uppercase; white-space: nowrap; letter-spacing: 0.05em; ${borderStyle} ${width}">${col.label}</th>`;
+      return `<th style="padding: ${options?.isPDFDownload ? "6px 12px 14px 12px" : "10px 12px"}; text-align: ${align}; vertical-align: middle; line-height: 1.2; font-size: ${fs(11)}; text-transform: uppercase; white-space: nowrap; letter-spacing: 0.05em; ${borderStyle} ${width}">${col.label}</th>`;
     })
     .join("");
 
@@ -847,42 +863,42 @@ export const generateDocumentHTML = (
             ? multiplier
             : fallbackDaysValue;
 
-            if (isDaysCol(col)) {
+          if (isDaysCol(col)) {
             content = String(finalDaysDisplayValue);
             align = "center";
-            style = "font-size: 10.5px; font-weight: 700; color: #111827;";
+            style = `font-size: ${fs(10.5)}; font-weight: 700; color: #111827;`;
           } else {
             switch (col.id) {
               case "reference":
                 content = item.productCode || "-";
                 align = "left";
-                style = "font-size: 12.3px; color: #4b5563;";
+                style = `font-size: ${fs(10.5)}; color: #4b5563;`;
                 break;
               case "name":
                 content = `
-                            <div style="font-weight: 500; color: #111827; font-size: 10.5px; line-height: 1.2; overflow-wrap: anywhere; word-break: break-word; white-space: pre-wrap;">${item.name}</div>
-                            ${item.description ? `<div style="font-size: 9px; color: #6b7280; margin-top: 2px; line-height: 1.1; overflow-wrap: anywhere; word-break: break-word; white-space: pre-wrap;">${item.description}</div>` : ""}
+                            <div style="font-weight: 500; color: #111827; font-size: ${fs(10.5)}; line-height: 1.2; overflow-wrap: anywhere; word-break: break-word; white-space: pre-wrap;">${item.name}</div>
+                            ${item.description ? `<div style="font-size: ${fs(9)}; color: #6b7280; margin-top: 2px; line-height: 1.1; overflow-wrap: anywhere; word-break: break-word; white-space: pre-wrap;">${item.description}</div>` : ""}
                         `;
                 break;
               case "quantity":
                 content = item.quantity.toString();
                 align = "center";
-                style = "font-weight: 700; font-size: 10.5px;";
+                style = `font-weight: 700; font-size: ${fs(10.5)};`;
                 break;
               case "unit":
                 content = item.unit || "-";
                 align = "center";
-                style = "font-size: 9.5px; color: #4b5563;";
+                style = `font-size: ${fs(9.5)}; color: #4b5563;`;
                 break;
               case "length":
                 content = (item.length || 1).toString();
                 align = "center";
-                style = "font-size: 10.5px;";
+                style = `font-size: ${fs(10.5)};`;
                 break;
               case "height":
                 content = (item.height || 1).toString();
                 align = "center";
-                style = "font-size: 10.5px;";
+                style = `font-size: ${fs(10.5)};`;
                 break;
               case "m2":
                 content = (
@@ -891,38 +907,38 @@ export const generateDocumentHTML = (
                   (Number(item.height) || 1)
                 ).toLocaleString("fr-MA", { maximumFractionDigits: 2 });
                 align = "center";
-                style = "font-size: 10.5px; font-weight: 500;";
+                style = `font-size: ${fs(10.5)}; font-weight: 500;`;
                 break;
               case "ml":
                 content = (
                   item.quantity * (Number(item.length) || 1)
                 ).toLocaleString("fr-MA", { maximumFractionDigits: 2 });
                 align = "center";
-                style = "font-size: 10.5px; font-weight: 500;";
+                style = `font-size: ${fs(10.5)}; font-weight: 500;`;
                 break;
               case "weight":
                 content = (item.weight || 1).toString();
                 align = "center";
-                style = "font-size: 10.5px;";
+                style = `font-size: ${fs(10.5)};`;
                 break;
               case "totalWeight":
                 content = (
                   item.quantity * (Number(item.weight) || 1)
                 ).toLocaleString("fr-MA", { maximumFractionDigits: 2 });
                 align = "center";
-                style = "font-size: 10.5px; font-weight: 500;";
+                style = `font-size: ${fs(10.5)}; font-weight: 500;`;
                 break;
               case "unitPrice":
                 content = (
                   isModeTTC ? unitPriceTTC : item.unitPrice
                 ).toLocaleString("fr-MA", { minimumFractionDigits: 2 });
                 align = "right";
-                style = "font-size: 10.5px;";
+                style = `font-size: ${fs(10.5)};`;
                 break;
               case "vat":
                 content = `${item.vat}%`;
                 align = "center";
-                style = "font-size: 10.5px;";
+                style = `font-size: ${fs(10.5)};`;
                 break;
               case "total":
                 const subTotalItem =
@@ -932,12 +948,12 @@ export const generateDocumentHTML = (
                   { minimumFractionDigits: 2 },
                 );
                 align = "right";
-                style = "font-weight: 700; font-size: 10.5px;";
+                style = `font-weight: 700; font-size: ${fs(10.5)};`;
                 break;
               case "days":
                 content = String(finalDaysDisplayValue);
                 align = "center";
-                style = "font-size: 10.5px; font-weight: 700;";
+                style = `font-size: ${fs(10.5)}; font-weight: 700;`;
                 break;
               default:
                 content = "-";
@@ -959,7 +975,7 @@ export const generateDocumentHTML = (
     const remaining = totalAmount - paid;
     if (paid > 0) {
       paymentInfoHtml = `
-                <div style="margin-top: 10px; font-size: 12px; color: #059669;">
+                <div style="margin-top: 10px; font-size: ${fs(12)}; color: #059669;">
                     ${lang === "es" ? "Ya pagado" : lang === "en" ? "Already paid" : "Déjà réglé"} : <b>${paid.toLocaleString("fr-MA", { style: 'currency', currency: settings?.defaultCurrencyCode || 'MAD' })}</b>
                     ${remaining > 0.1 ? `<br/><span style="color: #d97706;">${lang === "es" ? "Importe pendiente" : lang === "en" ? "Balance due" : "Reste à payer"} : <b>${remaining.toLocaleString("fr-MA", { style: 'currency', currency: settings?.defaultCurrencyCode || 'MAD' })}</b></span>` : `<br/><span style="color: #059669; font-weight: bold;">${lang === "es" ? "Liquidado" : lang === "en" ? "Settled" : "Soldé"}</span>`}
                 </div>
@@ -970,9 +986,9 @@ export const generateDocumentHTML = (
   const isInfoOnLeft = settings.documentInfoPosition === "left";
 
   const docInfoHtml = `
-        <div style="font-size: 26px; font-weight: bold; text-transform: uppercase; color: ${primaryColor}; margin-bottom: 10px;">${titleDisplay}</div>
-        <div style="font-size: 16px; font-weight: 600; color: #111827;">N° ${displayId}</div>
-        <div style="margin-top: 10px; font-size: 12px;">
+        <div style="font-size: ${fs(26)}; font-weight: bold; text-transform: uppercase; color: ${primaryColor}; margin-bottom: 10px;">${titleDisplay}</div>
+        <div style="font-size: ${fs(16)}; font-weight: 600; color: #111827;">N° ${displayId}</div>
+        <div style="margin-top: 10px; font-size: ${fs(12)};">
             <div>${dict.date || "Date"} : <b>${dateStr}</b></div>
             ${extraDateLabel ? `<div>${extraDateLabel} : <b>${extraDateValue}</b></div>` : ""}
             ${secondDateLabel ? `<div>${secondDateLabel} : <b>${secondDateValue}</b></div>` : ""}
@@ -987,8 +1003,8 @@ export const generateDocumentHTML = (
         <div style="margin-bottom: 20px;">
             <div style="width: 100%; margin-bottom: 20px;">
                 ${logoHtml}
-                <div style="margin-top: 15px; font-size: 12px; line-height: 1.5;">
-                    <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">${settings.companyName}</div>
+                <div style="margin-top: 15px; font-size: ${fs(12)}; line-height: 1.5;">
+                    <div style="font-weight: 600; font-size: ${fs(14)}; margin-bottom: 4px;">${settings.companyName}</div>
                     ${companyAddress}<br/>
                     <div style="margin-top: 5px; color: #6b7280;">${companyContact}</div>
                 </div>
@@ -1002,8 +1018,8 @@ export const generateDocumentHTML = (
         <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
             <div style="width: 50%;">
                 ${logoHtml}
-                <div style="margin-top: 15px; font-size: 12px; line-height: 1.5;">
-                    <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">${settings.companyName}</div>
+                <div style="margin-top: 15px; font-size: ${fs(12)}; line-height: 1.5;">
+                    <div style="font-weight: 600; font-size: ${fs(14)}; margin-bottom: 4px;">${settings.companyName}</div>
                     ${companyAddress}<br/>
                     <div style="margin-top: 5px; color: #6b7280;">${companyContact}</div>
                 </div>
@@ -1017,8 +1033,8 @@ export const generateDocumentHTML = (
   const clientInfoHtml = `
         <div style="display: flex; justify-content: ${clientPosition === 'left' ? 'flex-start' : 'flex-end'}; margin-bottom: 20px;">
             <div style="width: 45%; background-color: #f9fafb; padding: ${options?.isPDFDownload ? "8px 16px 12px 16px" : "12px 16px"}; border-radius: 6px; border: 1px solid #e5e7eb; line-height: 1.4; display: flex; flex-direction: column; justify-content: flex-start; align-items: flex-start;">
-                <div style="font-size: 10px; text-transform: uppercase; font-weight: 700; color: #9ca3af; margin-bottom: 6px; line-height: 1;">${dict.pdfAddressedTo || "Adressé à"}</div>
-                <div style="font-size: 14px; color: #111827; font-weight: 600;">
+                <div style="font-size: ${fs(10)}; text-transform: uppercase; font-weight: 700; color: #9ca3af; margin-bottom: 6px; line-height: 1;">${dict.pdfAddressedTo || "Adressé à"}</div>
+                <div style="font-size: ${fs(14)}; color: #111827; font-weight: 600;">
                     ${recipientCompany}
                     ${recipientName ? `<div style="${recipientCompany ? "font-weight: normal; margin-top: 2px;" : ""} line-height: 1.2;">${recipientName}</div>` : ""}
                 </div>
@@ -1028,7 +1044,7 @@ export const generateDocumentHTML = (
                   recipientEmail ||
                   recipientPhone
                     ? `
-                <div style="margin-top: 6px; font-size: 12px; color: #4b5563;">
+                <div style="margin-top: 6px; font-size: ${fs(12)}; color: #4b5563;">
                     ${recipientAddress}
                     ${recipientIce}
                     ${recipientEmail}
@@ -1056,14 +1072,14 @@ export const generateDocumentHTML = (
 
   // Financials Block
   const financialsHtml = `
-        <div class="totals-section" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
+        <div class="totals-section" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; font-size: ${fs(12)};">
             <div style="width: 55%; padding-top: 10px;">
                 ${
                   showAmountInWords
                     ? `
                     <div style="background-color: #f3f4f6; padding: ${options?.isPDFDownload ? "3px 12px 13px 12px" : "10px 12px"}; border-radius: 4px; border-left: 3px solid ${primaryColor}; display: flex; flex-direction: column; justify-content: flex-start; align-items: flex-start;">
-                        <div style="font-size: 11px; color: #6b7280; text-transform: uppercase; font-weight: bold; margin-bottom: 4px; line-height: 1.2;">${txtAmountInWords}</div>
-                        <div style="font-size: 13px; color: #111827; font-weight: 600; font-style: italic; line-height: 1.2;">
+                        <div style="font-size: ${fs(11)}; color: #6b7280; text-transform: uppercase; font-weight: bold; margin-bottom: 4px; line-height: 1.2;">${txtAmountInWords}</div>
+                        <div style="font-size: ${fs(13)}; color: #111827; font-weight: 600; font-style: italic; line-height: 1.2;">
                             ${amountInLetters}
                         </div>
                     </div>
@@ -1073,7 +1089,7 @@ export const generateDocumentHTML = (
                 ${
                   settings.defaultPaymentTerms
                     ? `
-                    <div style="margin-top: 10px; font-size: 11px; color: #4b5563;">
+                    <div style="margin-top: 10px; font-size: ${fs(11)}; color: #4b5563;">
                         ${settings.defaultPaymentTerms}
                     </div>
                 `
@@ -1082,7 +1098,7 @@ export const generateDocumentHTML = (
                 ${
                   doc.notes
                     ? `
-                    <div style="margin-top: 15px; font-size: 11px; color: #6b7280; white-space: pre-wrap;">
+                    <div style="margin-top: 15px; font-size: ${fs(11)}; color: #6b7280; white-space: pre-wrap;">
                         <span style="font-weight: 600;">${dict.notes || "Notes"}:</span> ${doc.notes}
                     </div>
                 `
@@ -1090,25 +1106,25 @@ export const generateDocumentHTML = (
                 }
             </div>
             <div style="width: 40%;">
-                <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #e5e7eb;">
+                <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #e5e7eb; font-size: ${fs(12)};">
                     <span>${txtTotalHt}</span>
                     <span style="font-weight: 600;">${subTotal.toLocaleString("fr-MA", { style: 'currency', currency: settings?.defaultCurrencyCode || 'MAD' })}</span>
                 </div>
                 ${
                   discountAmount > 0
                     ? `
-                <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #e5e7eb;">
+                <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #e5e7eb; font-size: ${fs(12)};">
                     <span>${dict.globalDiscount || "Remise exceptionnelle"} ${doc.discountType === "percentage" ? `(-${doc.discountValue}%)` : ""}</span>
                     <span style="font-weight: 600; color: #dc2626;">- ${discountAmount.toLocaleString("fr-MA", { style: 'currency', currency: settings?.defaultCurrencyCode || 'MAD' })}</span>
                 </div>
                 `
                     : ""
                 }
-                <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #e5e7eb;">
+                <div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #e5e7eb; font-size: ${fs(12)};">
                     <span>${txtTotalTax}</span>
                     <span>${vatAmount.toLocaleString("fr-MA", { style: 'currency', currency: settings?.defaultCurrencyCode || 'MAD' })}</span>
                 </div>
-                <div style="display: flex; justify-content: space-between; padding: 12px 0 4px 0; font-size: 16px; color: #000000; font-weight: bold; margin-top: 4px;">
+                <div style="display: flex; justify-content: space-between; padding: 12px 0 4px 0; font-size: ${fs(16)}; color: #000000; font-weight: bold; margin-top: 4px;">
                     <span>${txtTotalNet}</span>
                     <span>${totalAmount.toLocaleString("fr-MA", { style: 'currency', currency: settings?.defaultCurrencyCode || 'MAD' })}</span>
                 </div>
@@ -1119,14 +1135,14 @@ export const generateDocumentHTML = (
 
   const notesOnlyHtml = doc.notes
     ? `
-        <div style="margin-bottom: 20px; font-size: 11px; color: #6b7280;">
+        <div style="margin-bottom: 20px; font-size: ${fs(11)}; color: #6b7280;">
             <span style="font-weight: 600;">${dict.notes || "Notes"}:</span> ${doc.notes}
         </div>
     `
     : "";
 
   const signaturesHtml = `
-        <div class="totals-section" style="display: flex; justify-content: flex-end; margin-top: 30px; border-top: 1px solid #e5e7eb; padding-top: 15px;">
+        <div class="totals-section" style="display: flex; justify-content: flex-end; margin-top: 30px; border-top: 1px solid #e5e7eb; padding-top: 15px; font-size: ${fs(12)};">
             <div style="width: 45%; text-align: center;">
                 <div style="font-weight: bold; margin-bottom: 5px; text-decoration: underline;">${txtSigRecipient}</div>
                 ${settings.showSignatureRecipient && settings.stamp ? `<img src="${settings.stamp}" style="max-height: 300px; width: ${settings.stampWidth || 220}px; object-fit: contain; margin-top: 2px;" />` : settings.showSignatureRecipient ? '<div style="height: 80px;"></div>' : ""}
@@ -1152,8 +1168,8 @@ export const generateDocumentHTML = (
 
   const footerHtml = `
         <div style="text-align: center; padding-top: 2px; margin-top: auto;">
-            ${settings.footerNotes ? `<div style="font-size: 11px; color: #000000; margin-bottom: 4px; white-space: pre-wrap; font-style: normal;">${settings.footerNotes}</div>` : ""}
-            <div style="font-size: 10px; color: #000000; font-weight: normal; letter-spacing: 0.02em;">
+            ${settings.footerNotes ? `<div style="font-size: ${fs(11)}; color: #000000; margin-bottom: 4px; white-space: pre-wrap; font-style: normal;">${settings.footerNotes}</div>` : ""}
+            <div style="font-size: ${fs(10)}; color: #000000; font-weight: normal; letter-spacing: 0.02em;">
                 ${legalIds}
             </div>
         </div>
@@ -1200,39 +1216,39 @@ export const generateDocumentHTML = (
         if (isDaysCol(col)) {
           content = String(finalDaysDisplayValue);
           align = "center";
-          style = "font-size: 10.5px; font-weight: 700; color: #111827;";
+          style = `font-size: ${fs(10.5)}; font-weight: 700; color: #111827;`;
         } else {
           switch (col.id) {
             case "reference":
               content = item.productCode || "-";
               align = "left";
-              style = "font-size: 10.5px; color: #4b5563;";
+              style = `font-size: ${fs(10.5)}; color: #4b5563;`;
               break;
             case "name":
               content = `
-                        <div style="font-weight: 500; color: #111827; font-size: 10.5px; line-height: 1.2; overflow-wrap: anywhere; word-break: break-word; white-space: pre-wrap;">${item.name}</div>
-                        ${item.description ? `<div style="font-size: 9px; color: #6b7280; margin-top: 2px; line-height: 1.1; overflow-wrap: anywhere; word-break: break-word; white-space: pre-wrap;">${item.description}</div>` : ""}
+                        <div style="font-weight: 500; color: #111827; font-size: ${fs(10.5)}; line-height: 1.2; overflow-wrap: anywhere; word-break: break-word; white-space: pre-wrap;">${item.name}</div>
+                        ${item.description ? `<div style="font-size: ${fs(9)}; color: #6b7280; margin-top: 2px; line-height: 1.1; overflow-wrap: anywhere; word-break: break-word; white-space: pre-wrap;">${item.description}</div>` : ""}
                     `;
               break;
             case "quantity":
               content = item.quantity.toString();
               align = "center";
-              style = "font-weight: 700; font-size: 10.5px;";
+              style = `font-weight: 700; font-size: ${fs(10.5)};`;
               break;
             case "unit":
               content = item.unit || "-";
               align = "center";
-              style = "font-size: 9.5px; color: #4b5563;";
+              style = `font-size: ${fs(9.5)}; color: #4b5563;`;
               break;
             case "length" as any:
               content = (item.length || 1).toString();
               align = "center";
-              style = "font-size: 10.5px;";
+              style = `font-size: ${fs(10.5)};`;
               break;
             case "height" as any:
               content = (item.height || 1).toString();
               align = "center";
-              style = "font-size: 10.5px;";
+              style = `font-size: ${fs(10.5)};`;
               break;
             case "m2" as any:
               content = (
@@ -1241,7 +1257,7 @@ export const generateDocumentHTML = (
                 (item.height || 1)
               ).toLocaleString("fr-MA", { maximumFractionDigits: 2 });
               align = "center";
-              style = "font-size: 10.5px; font-weight: 500;";
+              style = `font-size: ${fs(10.5)}; font-weight: 500;`;
               break;
             case "ml" as any:
               content = (item.quantity * (item.length || 1)).toLocaleString(
@@ -1249,12 +1265,12 @@ export const generateDocumentHTML = (
                 { maximumFractionDigits: 2 },
               );
               align = "center";
-              style = "font-size: 10.5px; font-weight: 500;";
+              style = `font-size: ${fs(10.5)}; font-weight: 500;`;
               break;
             case "weight" as any:
               content = (item.weight || 1).toString();
               align = "center";
-              style = "font-size: 10.5px;";
+              style = `font-size: ${fs(10.5)};`;
               break;
             case "totalWeight" as any:
               content = (item.quantity * (item.weight || 1)).toLocaleString(
@@ -1262,19 +1278,19 @@ export const generateDocumentHTML = (
                 { maximumFractionDigits: 2 },
               );
               align = "center";
-              style = "font-size: 10.5px; font-weight: 500;";
+              style = `font-size: ${fs(10.5)}; font-weight: 500;`;
               break;
             case "unitPrice":
               content = (
                 isModeTTC ? unitPriceTTC : item.unitPrice
               ).toLocaleString("fr-MA", { minimumFractionDigits: 2 });
               align = "right";
-              style = "font-size: 10.5px;";
+              style = `font-size: ${fs(10.5)};`;
               break;
             case "vat":
               content = `${item.vat}%`;
               align = "center";
-              style = "font-size: 10.5px;";
+              style = `font-size: ${fs(10.5)};`;
               break;
             case "total":
               content = (
@@ -1283,12 +1299,12 @@ export const generateDocumentHTML = (
                   : item.quantity * getLineMultiplier(item) * item.unitPrice
               ).toLocaleString("fr-MA", { minimumFractionDigits: 2 });
               align = "right";
-              style = "font-weight: 700; font-size: 10.5px;";
+              style = `font-weight: 700; font-size: ${fs(10.5)};`;
               break;
             case "days":
               content = String(finalDaysDisplayValue);
               align = "center";
-              style = "font-size: 10.5px; font-weight: 700;";
+              style = `font-size: ${fs(10.5)}; font-weight: 700;`;
               break;
             default:
               content = "-";
@@ -1314,7 +1330,7 @@ export const generateDocumentHTML = (
   measureBox.style.width = "210mm";
   measureBox.style.overflow = "hidden";
   measureBox.innerHTML = `
-        <div style="width: 210mm; min-width: 210mm; max-width: 210mm; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 13px; box-sizing: border-box; padding: 15mm 15mm 28mm 15mm; -webkit-text-size-adjust: 100%; text-size-adjust: 100%;">
+        <div style="width: 210mm; min-width: 210mm; max-width: 210mm; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: ${fs(13)}; box-sizing: border-box; padding: 15mm 15mm 28mm 15mm; -webkit-text-size-adjust: 100%; text-size-adjust: 100%;">
             <div id="measure-header" style="position: relative; z-index: 2;">
                 ${topHeaderHtml}
                 ${clientInfoHtml}
@@ -1428,7 +1444,7 @@ export const generateDocumentHTML = (
       .join("");
 
     const pageHtml = `
-            <div class="pdf-page" style="width: 210mm; height: 296.5mm; max-height: 296.5mm; background: white; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 13px; color: #374151; display: flex; flex-direction: column; box-sizing: border-box; padding: 15mm 15mm 28mm 15mm; position: relative; overflow: hidden; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; ${isLastPage ? "" : "page-break-after: always;"}">
+            <div class="pdf-page" style="width: 210mm; height: 296.5mm; max-height: 296.5mm; background: white; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: ${fs(13)}; color: #374151; display: flex; flex-direction: column; box-sizing: border-box; padding: 15mm 15mm 28mm 15mm; position: relative; overflow: hidden; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; ${isLastPage ? "" : "page-break-after: always;"}">
                 <style>
                     * { box-sizing: border-box; }
                     .content-grow { flex: 1; z-index: 2; position: relative; }
@@ -1488,7 +1504,7 @@ export const generateDocumentHTML = (
 
                 <div style="position: absolute; bottom: 4mm; left: 15mm; right: 15mm; padding-top: 4px; border-top: 1px solid #000000; z-index: 2; background: white;">
                     ${footerHtml}
-                    <div style="text-align: right; font-size: 9px; color: #9ca3af; margin-top: 5px;">Page ${pageNum} / ${totalPages}</div>
+                    <div style="text-align: right; font-size: ${fs(9)}; color: #9ca3af; margin-top: 5px;">Page ${pageNum} / ${totalPages}</div>
                 </div>
             </div>
         `;

@@ -105,6 +105,7 @@ const TemplateCustomizer: React.FC<TemplateCustomizerProps> = ({ settings, onSav
         if (mergedSettings.showTableBorders === undefined) mergedSettings.showTableBorders = true;
         if (!mergedSettings.clientPosition) mergedSettings.clientPosition = 'right';
         if (mergedSettings.defaultTva === undefined) mergedSettings.defaultTva = 20;
+        if (!mergedSettings.documentFontSize) mergedSettings.documentFontSize = 100;
 
         if (settings?.backgroundLogo !== undefined) {
             mergedSettings.backgroundLogo = settings.backgroundLogo;
@@ -1165,6 +1166,37 @@ const TemplateCustomizer: React.FC<TemplateCustomizerProps> = ({ settings, onSav
                                                 </div>
                                             </div>
                                         </div>
+
+                                        {/* Quick Font Size Adjustment */}
+                                        <div className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80 flex items-center justify-between gap-4 flex-wrap">
+                                            <div className="flex items-center gap-3">
+                                                <div className="p-2 rounded-xl bg-teal-500/10 text-teal-600">
+                                                    <Type size={18} />
+                                                </div>
+                                                <div>
+                                                    <div className="text-xs font-bold text-slate-800">
+                                                        {language === 'ar' ? 'حجم خط المستندات والطباعة' : 'Taille de Police des Documents (PDF)'}
+                                                    </div>
+                                                    <div className="text-[11px] text-slate-500">
+                                                        {language === 'ar' ? 'تحكم في حجم خط كافة المستندات الصادرة' : 'Échelle globale d\'écriture (70% - 140%)'}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                                <input 
+                                                    type="range" 
+                                                    min="70" 
+                                                    max="140" 
+                                                    step="5" 
+                                                    value={localSettings.documentFontSize || 100} 
+                                                    onChange={(e) => setLocalSettings(prev => ({ ...prev, documentFontSize: parseInt(e.target.value) }))}
+                                                    className="w-28 sm:w-36 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-teal-600"
+                                                />
+                                                <span className="text-xs font-mono font-bold text-teal-700 bg-teal-50 px-2.5 py-1 rounded-lg border border-teal-200">
+                                                    {localSettings.documentFontSize || 100}%
+                                                </span>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </motion.div>
@@ -1381,6 +1413,204 @@ const TemplateCustomizer: React.FC<TemplateCustomizerProps> = ({ settings, onSav
                                                 {language === 'ar' ? 'يعرض الأسعار شاملة للضريبة مباشرة في كل سطر. مناسب لخدمة الأفراد والبيع المباشر (B2C).' : 'Affiche directement les montants Toutes Taxes Comprises (TTC) par article. Idéal pour particuliers.'}
                                             </p>
                                         </button>
+                                    </div>
+                                </div>
+
+                                {/* 3. Document Font Size Scaling (Taille d'écriture des documents) */}
+                                <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs space-y-6">
+                                    <div className="flex items-center justify-between gap-3.5 pb-5 border-b border-slate-100 flex-wrap">
+                                        <div className="flex items-center gap-3.5">
+                                            <div className="w-10 h-10 rounded-2xl bg-teal-500/10 text-teal-600 flex items-center justify-center font-bold border border-teal-200/50">
+                                                <Type size={20}/>
+                                            </div>
+                                            <div>
+                                                <h3 className="text-lg font-bold text-slate-900">
+                                                    {language === 'ar' ? 'حجم خط المستندات والطباعة (PDF)' : 'Taille du Texte & Police des Documents (PDF)'}
+                                                </h3>
+                                                <p className="text-xs text-slate-500 mt-0.5">
+                                                    {language === 'ar' 
+                                                        ? 'تحكم في حجم خط ونصوص كافة المستندات: الفواتير، عروض الأسعار، أذون التسليم، طلبيات الشراء، وإشعارات الخصم.' 
+                                                        : 'Ajustez la taille d\'écriture de vos factures, devis, bons de livraison, bons de commande et avoirs.'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-semibold text-slate-500">
+                                                {language === 'ar' ? 'الحجم الحالي:' : 'Taille actuelle :'}
+                                            </span>
+                                            <span className="px-3.5 py-1 rounded-xl bg-teal-50 text-teal-700 font-mono font-bold text-sm border border-teal-200 shadow-2xs">
+                                                {localSettings.documentFontSize || 100}%
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Presets */}
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-700 mb-2 uppercase tracking-wider">
+                                            {language === 'ar' ? 'خيارات سريعة جاهزة' : 'Préréglages Recommandés'}
+                                        </label>
+                                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+                                            {[
+                                                { value: 85, name: language === 'ar' ? 'مضغوط (85%)' : 'Compact (85%)', desc: language === 'ar' ? 'لفواتير طويلة بصفحة واحدة' : 'Factures denses' },
+                                                { value: 95, name: language === 'ar' ? 'متناسق (95%)' : 'Équilibré (95%)', desc: language === 'ar' ? 'تنسيق أنيق ومقتصد' : 'Sobre et fin' },
+                                                { value: 100, name: language === 'ar' ? 'قياسي (100%)' : 'Standard (100%)', desc: language === 'ar' ? 'الحجم الأصلي الافتراضي' : 'Défaut recommandé' },
+                                                { value: 110, name: language === 'ar' ? 'مريح (110%)' : 'Confort (110%)', desc: language === 'ar' ? 'قراءة سهلة وأوضح' : 'Lecture agrandie' },
+                                                { value: 120, name: language === 'ar' ? 'كبير (120%)' : 'Grand (120%)', desc: language === 'ar' ? 'خط عريض بارز' : 'Haute lisibilité' },
+                                            ].map((preset) => {
+                                                const isCurrent = (localSettings.documentFontSize || 100) === preset.value;
+                                                return (
+                                                    <button
+                                                        key={preset.value}
+                                                        type="button"
+                                                        onClick={() => setLocalSettings(prev => ({ ...prev, documentFontSize: preset.value }))}
+                                                        className={`p-3 rounded-2xl border text-center transition-all ${
+                                                            isCurrent
+                                                                ? 'border-teal-500 bg-teal-50/60 ring-2 ring-teal-500/20 shadow-xs'
+                                                                : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                                                        }`}
+                                                    >
+                                                        <div className="font-bold text-xs text-slate-900">{preset.name}</div>
+                                                        <div className="text-[10px] text-slate-500 mt-0.5">{preset.desc}</div>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    {/* Slider and Manual Input */}
+                                    <div className="bg-slate-50/70 p-5 rounded-2xl border border-slate-200/80 space-y-4">
+                                        <div className="flex items-center justify-between gap-4 flex-wrap">
+                                            <div className="space-y-1">
+                                                <div className="text-xs font-bold text-slate-800">
+                                                    {language === 'ar' ? 'شريط التعديل الدقيق (من 70% إلى 140%)' : 'Réglage Personnalisé Précis (de 70% à 140%)'}
+                                                </div>
+                                                <div className="text-[11px] text-slate-500">
+                                                    {language === 'ar' ? 'حرك المؤشر أو اكتب النسبة المئوية المطلوبة مباشرة' : 'Glissez le curseur ou saisissez la valeur exacte'}
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setLocalSettings(prev => ({ ...prev, documentFontSize: Math.max(70, (prev.documentFontSize || 100) - 5) }))}
+                                                    className="w-9 h-9 rounded-xl bg-white border border-slate-200 font-bold text-slate-700 hover:bg-slate-100 flex items-center justify-center transition-all active:scale-95 shadow-2xs"
+                                                    title="-5%"
+                                                >
+                                                    -
+                                                </button>
+                                                <div className="relative">
+                                                    <input
+                                                        type="number"
+                                                        min="70"
+                                                        max="140"
+                                                        step="1"
+                                                        value={localSettings.documentFontSize || 100}
+                                                        onChange={(e) => {
+                                                            const val = parseInt(e.target.value);
+                                                            if (!isNaN(val)) {
+                                                                setLocalSettings(prev => ({ ...prev, documentFontSize: Math.min(140, Math.max(60, val)) }));
+                                                            }
+                                                        }}
+                                                        className="w-20 rounded-xl border border-slate-200 bg-white py-2 px-2 text-center text-sm font-bold text-slate-900 focus:border-teal-500 focus:ring-4 focus:ring-teal-500/10 transition-all font-mono"
+                                                    />
+                                                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold pointer-events-none">%</span>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setLocalSettings(prev => ({ ...prev, documentFontSize: Math.min(140, (prev.documentFontSize || 100) + 5) }))}
+                                                    className="w-9 h-9 rounded-xl bg-white border border-slate-200 font-bold text-slate-700 hover:bg-slate-100 flex items-center justify-center transition-all active:scale-95 shadow-2xs"
+                                                    title="+5%"
+                                                >
+                                                    +
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setLocalSettings(prev => ({ ...prev, documentFontSize: 100 }))}
+                                                    className="px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-all ml-1 shadow-2xs"
+                                                    title="Réinitialiser à 100%"
+                                                >
+                                                    {language === 'ar' ? '100% (افتراضي)' : 'Défaut (100%)'}
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <input
+                                            type="range"
+                                            min="70"
+                                            max="140"
+                                            step="5"
+                                            value={localSettings.documentFontSize || 100}
+                                            onChange={(e) => setLocalSettings(prev => ({ ...prev, documentFontSize: parseInt(e.target.value) }))}
+                                            className="w-full h-2.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-teal-600"
+                                        />
+
+                                        <div className="flex justify-between text-[10px] font-mono text-slate-400 px-0.5">
+                                            <span>70% (Très compact)</span>
+                                            <span>85%</span>
+                                            <span className="font-bold text-slate-600">100% (Standard)</span>
+                                            <span>115%</span>
+                                            <span>140% (Très grand)</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Live Typography Preview Box */}
+                                    <div className="p-4 bg-slate-900 rounded-2xl text-white space-y-3">
+                                        <div className="flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-widest flex-wrap gap-2">
+                                            <div className="flex items-center gap-2">
+                                                <Eye size={14} className="text-teal-400" />
+                                                <span>{language === 'ar' ? 'معاينة حية فورية لنصوص المستند' : 'Aperçu en direct du texte dans le document'}</span>
+                                            </div>
+                                            <span className="text-teal-400 font-mono text-[11px] normal-case bg-teal-950/60 px-2.5 py-0.5 rounded border border-teal-800/50">
+                                                Échelle: {((localSettings.documentFontSize || 100) / 100).toFixed(2)}x
+                                            </span>
+                                        </div>
+                                        <div className="bg-white text-slate-800 rounded-xl p-4 shadow-inner space-y-3 font-sans transition-all overflow-hidden border border-slate-700">
+                                            <div className="flex justify-between items-start border-b border-slate-200 pb-2 flex-wrap gap-2">
+                                                <div>
+                                                    <div style={{ fontSize: `${Math.round(18 * ((localSettings.documentFontSize || 100) / 100) * 10) / 10}px`, fontWeight: 'bold', color: localSettings.primaryColor || '#10b981', lineHeight: 1.2 }}>
+                                                        FACTURE N° FAC/2025/00142
+                                                    </div>
+                                                    <div style={{ fontSize: `${Math.round(11 * ((localSettings.documentFontSize || 100) / 100) * 10) / 10}px`, color: '#64748b', marginTop: '2px' }}>
+                                                        Date: 15/10/2025 • Échéance: 15/11/2025
+                                                    </div>
+                                                </div>
+                                                <div className="text-right rtl:text-left" style={{ fontSize: `${Math.round(11 * ((localSettings.documentFontSize || 100) / 100) * 10) / 10}px`, color: '#334155' }}>
+                                                    <div className="font-bold">CLIENT : STE ATLAS DISTRIB SARL</div>
+                                                    <div>Casablanca, Maroc • ICE: 001894231000045</div>
+                                                </div>
+                                            </div>
+
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full text-left rtl:text-right" style={{ fontSize: `${Math.round(10.5 * ((localSettings.documentFontSize || 100) / 100) * 10) / 10}px` }}>
+                                                    <thead>
+                                                        <tr style={{ backgroundColor: localSettings.tableHeaderBgColor || '#10b981', color: localSettings.headerTextColor || '#ffffff' }}>
+                                                            <th className="p-1.5 rounded-l">Désignation</th>
+                                                            <th className="p-1.5 text-center">Qté</th>
+                                                            <th className="p-1.5 text-right rtl:text-left">P.U. HT</th>
+                                                            <th className="p-1.5 text-right rtl:text-left rounded-r">Total HT</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-100">
+                                                        <tr>
+                                                            <td className="p-1.5 font-medium">Installation & Prestation de Service</td>
+                                                            <td className="p-1.5 text-center">2</td>
+                                                            <td className="p-1.5 text-right rtl:text-left">4 500,00 MAD</td>
+                                                            <td className="p-1.5 text-right rtl:text-left font-semibold">9 000,00 MAD</td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+
+                                            <div className="flex justify-between items-center pt-2 border-t border-slate-200 flex-wrap gap-2">
+                                                <div style={{ fontSize: `${Math.round(10.5 * ((localSettings.documentFontSize || 100) / 100) * 10) / 10}px`, color: '#64748b', fontStyle: 'italic' }}>
+                                                    Arrêté le présent document à la somme de : Dix Mille Huit Cents Dirhams
+                                                </div>
+                                                <div className="text-right rtl:text-left">
+                                                    <span style={{ fontSize: `${Math.round(14 * ((localSettings.documentFontSize || 100) / 100) * 10) / 10}px`, fontWeight: 'bold', color: '#0f172a' }}>
+                                                        Total TTC : 10 800,00 MAD
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
 

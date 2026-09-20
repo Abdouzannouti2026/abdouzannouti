@@ -67,6 +67,7 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
     const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>('percentage');
     const [discountValue, setDiscountValue] = useState<string>('');
     const [stockError, setStockError] = useState<string | null>(null);
+    const [saveError, setSaveError] = useState<string | null>(null);
 
     const stripHtml = (html?: string) => {
         if (!html) return '';
@@ -78,8 +79,12 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
     useEffect(() => {
         if (isOpen) {
             setTimeout(() => setIsVisible(true), 10);
+            setSaveError(null);
+            setStockError(null);
             if (invoiceToEdit) {
-                setClientId(invoiceToEdit.clientId);
+                // POS invoices for counter clients have clientId === '' or 'client-comptoir'
+                const resolvedClientId = invoiceToEdit.clientId || 'client-comptoir';
+                setClientId(resolvedClientId);
                 setDocumentId(invoiceToEdit.documentId || '');
                 setDate(invoiceToEdit.date);
                 setDueDate(invoiceToEdit.dueDate || invoiceToEdit.lineItems[0]?.dueDate || new Date(new Date(invoiceToEdit.date).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
@@ -227,6 +232,39 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
         return 1;
     };
 
+    const insertItem = () => {
+        const qty = parseDecimalInput(itemQuantity);
+        const inputPrice = parseDecimalInput(tempPrice);
+        const vatValue = typeof tempVat === 'number' ? tempVat : (companySettings?.defaultTva ?? 20);
+        const price = isModeTTC ? (inputPrice / (1 + vatValue / 100)) : inputPrice;
+        const length = showLengthColumn ? parseDecimalInput(tempLength) : 1;
+        const height = showHeightColumn ? parseDecimalInput(tempHeight) : 1;
+        const weight = isKg ? parseDecimalInput(tempWeight) : 1;
+        const days = isDays ? parseDecimalInput(tempDays) : 1;
+        
+        const newItem: LineItem = {
+            id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            productId: selectedProductId || null,
+            variantId: selectedVariantId || undefined,
+            productCode: tempProductCode || '',
+            name: tempName,
+            description: tempDesc || '',
+            quantity: qty || 1,
+            unit: tempUnit || '',
+            length: length || 1,
+            height: height || 1,
+            weight: weight || 1,
+            days: days || 1,
+            unitPrice: price || 0,
+            vat: vatValue,
+            calculationMode
+        };
+        setLineItems(prev => [...(prev || []), newItem]);
+        resetItemForm();
+        setStockError(null);
+        setSaveError(null);
+    };
+
     const handleAddItem = () => {
         try {
             setStockError(null);
@@ -274,32 +312,7 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
                 }
             }
 
-            const inputPrice = parseDecimalInput(tempPrice);
-            const vatValue = typeof tempVat === 'number' ? tempVat : (companySettings?.defaultTva ?? 20);
-            const price = isModeTTC ? (inputPrice / (1 + vatValue / 100)) : inputPrice;
-            const length = showLengthColumn ? parseDecimalInput(tempLength) : 1;
-            const height = showHeightColumn ? parseDecimalInput(tempHeight) : 1;
-            const weight = isKg ? parseDecimalInput(tempWeight) : 1;
-            const days = isDays ? parseDecimalInput(tempDays) : 1;
-            
-            const newItem: LineItem = {
-                id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                productId: selectedProductId || null,
-                variantId: selectedVariantId || undefined,
-                productCode: tempProductCode || '',
-                name: tempName,
-                description: tempDesc || '',
-                quantity: qty || 1,
-                unit: tempUnit || '',
-                length: length || 1,
-                height: height || 1,
-                weight: weight || 1,
-                days: days || 1,
-                unitPrice: price || 0,
-                vat: vatValue
-            };
-            setLineItems(prev => [...(prev || []), newItem]);
-            resetItemForm();
+            insertItem();
         } catch (error) {
             console.error("Error in handleAddItem:", error);
             alert("Erreur lors de l'ajout de l'article. Veuillez vérifier les données saisies.");
@@ -339,9 +352,9 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
         setLineItems(prev => prev.map(item => item.id === id ? { ...item, ...updatedField } : item));
     };
 
-    const totals = useMemo(() => {
+    const computeTotals = (items: LineItem[]) => {
         if (isModeTTC) {
-            const totalTTCUnrounded = lineItems.reduce((acc, item) => {
+            const totalTTCUnrounded = items.reduce((acc, item) => {
                 const lineMultiplier = getLineMultiplier(item);
                 const unitTTC = roundPrice(item.unitPrice * (1 + (item.vat || 0) / 100));
                 return acc + (unitTTC * item.quantity * lineMultiplier);
@@ -359,7 +372,7 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
 
             const totalTTC = Math.round((totalTTCUnrounded - discountAmount) * 100) / 100;
 
-            const subTotalUnrounded = lineItems.reduce((acc, item) => {
+            const subTotalUnrounded = items.reduce((acc, item) => {
                 const lineMultiplier = getLineMultiplier(item);
                 const unitTTC = roundPrice(item.unitPrice * (1 + (item.vat || 0) / 100));
                 const lineTTC = unitTTC * item.quantity * lineMultiplier;
@@ -372,7 +385,7 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
 
             return { subTotal, vatAmount: vatAmountAfterDiscount, totalTTC, discountAmount };
         } else {
-            const subTotalUnrounded = lineItems.reduce((acc, item) => {
+            const subTotalUnrounded = items.reduce((acc, item) => {
                 const lineTotal = item.unitPrice * item.quantity * getLineMultiplier(item);
                 return acc + lineTotal;
             }, 0);
@@ -389,7 +402,7 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
 
             const subTotalAfterDiscountUnrounded = subTotalUnrounded - discountAmount;
 
-            const vatAmountUnrounded = lineItems.reduce((acc, item) => {
+            const vatAmountUnrounded = items.reduce((acc, item) => {
                 const itemTotalHT = item.unitPrice * item.quantity * getLineMultiplier(item);
                 const itemDiscount = subTotalUnrounded > 0 ? (itemTotalHT / subTotalUnrounded) * discountAmount : 0;
                 const itemBaseForVat = itemTotalHT - itemDiscount;
@@ -402,20 +415,77 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
 
             return { subTotal, vatAmount: vatAmountAfterDiscount, totalTTC, discountAmount };
         }
-    }, [lineItems, isDiscountEnabled, discountType, discountValue, language, calculationMode, isModeTTC]);
+    };
+
+    const totals = useMemo(() => computeTotals(lineItems), [lineItems, isDiscountEnabled, discountType, discountValue, language, calculationMode, isModeTTC]);
 
     const handleSave = async () => {
-        if (!clientId || lineItems.length === 0) return;
-        const client = clients.find(c => c.id === clientId);
-        const clientNameDisplay = client ? (client.company || client.name) : 'Client inconnu';
+        setSaveError(null);
+
+        if (!clientId) {
+            setSaveError(language === 'ar' ? 'يرجى تحديد أو اختيار العميل قبل حفظ الفاتورة' : 'Veuillez sélectionner un client pour enregistrer la facture.');
+            return;
+        }
+
+        // Auto-include pending article if the user entered/selected a product but didn't click "+ Ajouter"
+        let effectiveLineItems = [...lineItems];
+        if (tempName && tempName.trim()) {
+            const qty = parseDecimalInput(itemQuantity) || 1;
+            const inputPrice = parseDecimalInput(tempPrice) || 0;
+            const vatValue = typeof tempVat === 'number' ? tempVat : (companySettings?.defaultTva ?? 20);
+            const price = isModeTTC ? (inputPrice / (1 + vatValue / 100)) : inputPrice;
+            const length = showLengthColumn ? (parseDecimalInput(tempLength) || 1) : 1;
+            const height = showHeightColumn ? (parseDecimalInput(tempHeight) || 1) : 1;
+            const weight = isKg ? (parseDecimalInput(tempWeight) || 1) : 1;
+            const days = isDays ? (parseDecimalInput(tempDays) || 1) : 1;
+
+            const pendingItem: LineItem = {
+                id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                productId: selectedProductId || null,
+                variantId: selectedVariantId || undefined,
+                productCode: tempProductCode || '',
+                name: tempName.trim(),
+                description: tempDesc || '',
+                quantity: qty,
+                unit: tempUnit || '',
+                length,
+                height,
+                weight,
+                days,
+                unitPrice: price,
+                vat: vatValue,
+                calculationMode
+            };
+            effectiveLineItems.push(pendingItem);
+        }
+
+        if (effectiveLineItems.length === 0) {
+            setSaveError(language === 'ar' ? 'يرجى إضافة مادة واحدة على الأقل إلى الفاتورة (اضغط على زر + إضافة)' : 'Veuillez ajouter au moins un article à la facture (cliquez sur + Ajouter).');
+            return;
+        }
+
+        // Client resolution: support Client Comptoir (POS) and registered clients
+        let clientNameDisplay = 'Client Comptoir';
+        let savedClientId = clientId;
+        if (clientId === 'client-comptoir') {
+            clientNameDisplay = invoiceToEdit?.clientName || (language === 'ar' ? 'زبون مباشر (كونتوار)' : 'Client Comptoir');
+            savedClientId = ''; // keeps POS standard
+        } else {
+            const client = clients.find(c => c.id === clientId);
+            clientNameDisplay = client ? (client.company || client.name) : (invoiceToEdit?.clientName || 'Client');
+            savedClientId = clientId;
+        }
+
+        const effectiveTotals = computeTotals(effectiveLineItems);
         const totalPaid = existingAmountPaid + newPaymentAmount;
         let status = InvoiceStatus.Pending;
-        if (totalPaid >= totals.totalTTC - 0.001) status = InvoiceStatus.Paid;
+        if (totalPaid >= effectiveTotals.totalTTC - 0.001) status = InvoiceStatus.Paid;
         else if (totalPaid > 0) status = InvoiceStatus.Partial;
 
-        // Stock check before saving
+        // Stock check before saving with warning confirmation
+        const insufficientProducts: string[] = [];
         const checkedVariantKeys = new Set<string>();
-        for (const item of lineItems) {
+        for (const item of effectiveLineItems) {
             const key = `${item.productId}-${item.variantId || 'none'}`;
             if (item.productId && !checkedVariantKeys.has(key)) {
                 checkedVariantKeys.add(key);
@@ -424,7 +494,7 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
                     if (item.variantId && product.hasVariants && product.variants) {
                         const variant = product.variants.find(v => v.id === item.variantId);
                         if (variant) {
-                            const totalQtyInInvoice = lineItems
+                            const totalQtyInInvoice = effectiveLineItems
                                 .filter(li => li.productId === item.productId && li.variantId === item.variantId)
                                 .reduce((sum, li) => sum + li.quantity, 0);
                                 
@@ -434,12 +504,11 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
                             const availableStock = (variant.stockQuantity || 0) + savedQty;
                             
                             if (totalQtyInInvoice > availableStock) {
-                                alert(`Stock insuffisant pour la variante ${variant.attributeValue} de ${product.name}. Stock disponible: ${availableStock}`);
-                                return;
+                                insufficientProducts.push(`${product.name} (${variant.attributeValue}): dispo ${availableStock}, demandé ${totalQtyInInvoice}`);
                             }
                         }
                     } else {
-                        const totalQtyInInvoice = lineItems
+                        const totalQtyInInvoice = effectiveLineItems
                             .filter(li => li.productId === item.productId && !li.variantId)
                             .reduce((sum, li) => sum + li.quantity, 0);
                             
@@ -449,16 +518,24 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
                         const availableStock = (product.stockQuantity || 0) + savedQty;
                         
                         if (totalQtyInInvoice > availableStock) {
-                            alert(`Stock insuffisant pour ${product.name}. Stock disponible: ${availableStock}`);
-                            return;
+                            insufficientProducts.push(`${product.name}: dispo ${availableStock}, demandé ${totalQtyInInvoice}`);
                         }
                     }
                 }
             }
         }
 
+        if (insufficientProducts.length > 0) {
+            const proceed = window.confirm(
+                language === 'ar'
+                    ? `تنبيه: المخزون المسجل لبعض المواد غير كافٍ:\n${insufficientProducts.join('\n')}\n\nهل تريد المتابعة وحفظ الفاتورة رغم ذلك؟`
+                    : `Attention : Stock insuffisant pour :\n${insufficientProducts.join('\n')}\n\nSouhaitez-vous quand même enregistrer la facture ?`
+            );
+            if (!proceed) return;
+        }
+
         // Store metadata in the first line item to avoid schema changes
-        const updatedLineItems = [...lineItems];
+        const updatedLineItems = [...effectiveLineItems];
         if (updatedLineItems.length > 0) {
             updatedLineItems[0] = { 
                 ...updatedLineItems[0], 
@@ -475,7 +552,9 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
 
         const invoiceData = {
             documentId: documentId || undefined,
-            clientId, clientName: clientNameDisplay, date, 
+            clientId: savedClientId, 
+            clientName: clientNameDisplay, 
+            date, 
             dueDate: showDueDateField ? dueDate : undefined, 
             subject: showSubjectField ? subject : undefined, 
             purchaseOrderNumber: showPOField ? purchaseOrderNumber : undefined,
@@ -483,10 +562,11 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
             checkNumber: (showPaymentMethodField && invoicePaymentMethod === 'Chèque') ? checkNumber : undefined,
             bankName: (showPaymentMethodField && invoicePaymentMethod === 'Chèque') ? bankName : undefined,
             notes,
-            lineItems: updatedLineItems, status,
-            subTotal: totals.subTotal, 
-            vatAmount: totals.vatAmount, 
-            amount: totals.totalTTC, 
+            lineItems: updatedLineItems, 
+            status,
+            subTotal: effectiveTotals.subTotal, 
+            vatAmount: effectiveTotals.vatAmount, 
+            amount: effectiveTotals.totalTTC, 
             amountPaid: totalPaid,
             discountType: isDiscountEnabled ? discountType : undefined,
             discountValue: isDiscountEnabled ? parseDecimalInput(discountValue) : undefined,
@@ -498,6 +578,7 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
                 bankName: (invoicePaymentMethod === 'Chèque') ? bankName : undefined
             } : undefined
         };
+
         setIsSubmitting(true);
         try { 
             if (invoiceToEdit?.id) {
@@ -506,7 +587,12 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
                 await onSave(invoiceData);
             }
             handleClose(); 
-        } catch (error) { console.error(error); } finally { setIsSubmitting(false); }
+        } catch (error: any) { 
+            console.error("Save invoice error:", error); 
+            setSaveError(error?.message || (language === 'ar' ? 'حدث خطأ أثناء حفظ الفاتورة' : "Erreur lors de l'enregistrement de la facture"));
+        } finally { 
+            setIsSubmitting(false); 
+        }
     };
 
     const remainingAmount = Math.max(0, totals.totalTTC - (existingAmountPaid + newPaymentAmount));
@@ -552,9 +638,24 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
                         </div>
                         <div className="space-y-1">
                             <label className="block text-sm font-bold text-slate-700 ml-1">{t('client')} *</label>
-                            <select value={clientId} onChange={(e) => setClientId(e.target.value)} className="block w-full rounded-xl border-slate-200 bg-slate-50 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm h-12">
+                            <select 
+                                value={clientId} 
+                                onChange={(e) => {
+                                    setClientId(e.target.value);
+                                    if (saveError) setSaveError(null);
+                                }} 
+                                className={`block w-full rounded-xl border-slate-200 bg-slate-50 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm h-12 ${!clientId && saveError ? 'border-rose-500 ring-2 ring-rose-200' : ''}`}
+                            >
                                 <option value="">-- {t('select')} --</option>
-                                {clients.map(client => (<option key={client.id} value={client.id}>{client.company || client.name}</option>))}
+                                <option value="client-comptoir">
+                                    👤 {invoiceToEdit?.clientName || (language === 'ar' ? 'زبون مباشر (كونتوار / نقطة البيع POS)' : 'Client Comptoir / Passager (POS)')}
+                                </option>
+                                {clients.map(client => (
+                                    <option key={client.id} value={client.id}>{client.company || client.name}</option>
+                                ))}
+                                {invoiceToEdit?.clientName && invoiceToEdit.clientId && invoiceToEdit.clientId !== 'client-comptoir' && !clients.some(c => c.id === invoiceToEdit.clientId) && (
+                                    <option value={invoiceToEdit.clientId}>{invoiceToEdit.clientName}</option>
+                                )}
                             </select>
                         </div>
                         <div className="space-y-1">
@@ -903,10 +1004,19 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
                             </div>
 
                             {stockError && (
-                                <div className="col-span-1 md:col-span-12 lg:col-span-12 mt-2 animate-in fade-in slide-in-from-top-1">
-                                    <div className="flex items-center gap-2 px-3 py-2 bg-red-50 text-red-600 rounded-lg border border-red-100 text-[11px] font-bold uppercase tracking-wider">
-                                        <AlertTriangle size={14} />
-                                        {stockError}
+                                <div className="col-span-1 md:col-span-24 lg:col-span-12 mt-2 animate-in fade-in slide-in-from-top-1">
+                                    <div className="flex items-center justify-between px-3.5 py-2.5 bg-amber-50 text-amber-900 rounded-xl border border-amber-200 text-xs font-medium">
+                                        <div className="flex items-center gap-2">
+                                            <AlertTriangle size={16} className="text-amber-600 shrink-0" />
+                                            <span>{stockError}</span>
+                                        </div>
+                                        <button 
+                                            type="button" 
+                                            onClick={insertItem}
+                                            className="ml-3 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold rounded-lg transition-all shadow-xs whitespace-nowrap active:scale-95"
+                                        >
+                                            {language === 'ar' ? 'إضافة على أية حال' : 'Ajouter quand même'}
+                                        </button>
                                     </div>
                                 </div>
                             )}
@@ -1258,6 +1368,18 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
                         </div>
                     </div>
                 </div>
+
+                {saveError && (
+                    <div className="mx-6 mb-2 p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between text-rose-700 text-xs font-semibold animate-in fade-in">
+                        <div className="flex items-center gap-2">
+                            <AlertTriangle size={16} className="text-rose-600 shrink-0" />
+                            <span>{saveError}</span>
+                        </div>
+                        <button type="button" onClick={() => setSaveError(null)} className="text-rose-400 hover:text-rose-700 p-1">
+                            <X size={15} />
+                        </button>
+                    </div>
+                )}
 
                 <div className="flex justify-end gap-2.5 p-4 bg-slate-50/50 border-t border-slate-100">
                     <button type="button" onClick={handleClose} disabled={isSubmitting} className="btn-secondary">

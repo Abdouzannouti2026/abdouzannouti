@@ -3,7 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ResponsiveContainer, AreaChart, Area, CartesianGrid, XAxis, YAxis, Tooltip } from 'recharts';
 import { Invoice, InvoiceStatus, Client, Product, CompanySettings, CreditNote, CreditNoteStatus, Expense, StockMovement } from '../types';
-import { Users, Package, FileText, AlertCircle, AlertTriangle, DollarSign, Archive, CheckCircle, ArrowRight, UserPlus, ChevronRight, TrendingUp, CalendarDays, Filter, Clock, UserCheck, Layers, BarChart3, Receipt, Users2, Box, ShieldAlert, Wallet, Store } from 'lucide-react';
+import { Users, Package, FileText, AlertCircle, AlertTriangle, DollarSign, Archive, CheckCircle, ArrowRight, UserPlus, ChevronRight, TrendingUp, TrendingDown, CalendarDays, Filter, Clock, UserCheck, Layers, BarChart3, Receipt, Users2, Box, ShieldAlert, Wallet, Store } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 
 interface DashboardProps {
@@ -52,6 +52,7 @@ const Dashboard: React.FC<DashboardProps> = ({ invoices, clients, products, comp
     const navigate = useNavigate();
     const { t, language } = useLanguage();
     const [chartPeriod, setChartPeriod] = useState<ChartPeriod>('year');
+    const [salesRankTab, setSalesRankTab] = useState<'top' | 'unsold'>('top');
     const [customStartDate, setCustomStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]);
     const [customEndDate, setCustomEndDate] = useState(new Date().toISOString().split('T')[0]);
     
@@ -245,26 +246,46 @@ const Dashboard: React.FC<DashboardProps> = ({ invoices, clients, products, comp
             .slice(0, 3);
     }, [products]);
 
-    const topProducts = useMemo(() => {
+    const { topProducts, unsoldProducts } = useMemo(() => {
         const salesMap: Record<string, number> = {};
         invoices.forEach(inv => {
             if (inv.status !== InvoiceStatus.Draft) {
-                inv.lineItems.forEach(item => {
+                inv.lineItems?.forEach(item => {
                     if (item.productId) {
-                        salesMap[item.productId] = (salesMap[item.productId] || 0) + item.quantity;
+                        salesMap[item.productId] = (salesMap[item.productId] || 0) + (item.quantity || 1);
+                    } else if (item.description) {
+                        const matched = products.find(p => p.name.trim().toLowerCase() === item.description?.trim().toLowerCase());
+                        if (matched) {
+                            salesMap[matched.id] = (salesMap[matched.id] || 0) + (item.quantity || 1);
+                        }
                     }
                 });
             }
         });
         
-        return Object.entries(salesMap)
+        const top = Object.entries(salesMap)
             .map(([id, qty]) => {
                 const product = products.find(p => p.id === id);
-                return product ? { name: product.name, qty } : null;
+                return product ? { id: product.id, name: product.name, qty, stock: product.stockQuantity ?? 0 } : null;
             })
             .filter(Boolean)
             .sort((a, b) => (b?.qty || 0) - (a?.qty || 0))
-            .slice(0, 3);
+            .slice(0, 5) as { id: string; name: string; qty: number; stock: number }[];
+
+        // Produits qui n'ont jamais été vendus (0 vente dans les factures)
+        const unsold = products
+            .filter(p => (salesMap[p.id] || 0) === 0)
+            .sort((a, b) => (b.stockQuantity || 0) - (a.stockQuantity || 0))
+            .slice(0, 5)
+            .map(p => ({
+                id: p.id,
+                name: p.name,
+                qty: 0,
+                stock: p.stockQuantity ?? 0,
+                price: p.salePrice ?? 0
+            }));
+
+        return { topProducts: top, unsoldProducts: unsold };
     }, [invoices, products]);
 
     const recentInvoices = useMemo(() => {
@@ -458,30 +479,117 @@ const Dashboard: React.FC<DashboardProps> = ({ invoices, clients, products, comp
                         </div>
                     </div>
 
-                    {/* Meilleurs Produits */}
-                    <div className="bg-amber-50/80 rounded-2xl md:rounded-3xl p-5 md:p-6 border border-amber-100 w-full shadow-sm">
-                        <div className="flex justify-between items-center mb-4">
-                            <h4 className="text-sm md:text-base font-bold text-amber-900 flex items-center gap-2">
-                                <TrendingUp className="h-4 w-4 md:h-5 md:w-5"/> {t('topSales')}
+                    {/* Meilleurs Produits / Produits Non Vendus */}
+                    <div className={`rounded-2xl md:rounded-3xl p-5 md:p-6 border transition-all w-full shadow-sm ${
+                        salesRankTab === 'top' 
+                            ? 'bg-amber-50/80 border-amber-100' 
+                            : 'bg-rose-50/80 border-rose-100'
+                    }`}>
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                            <h4 className={`text-sm md:text-base font-bold flex items-center gap-2 ${
+                                salesRankTab === 'top' ? 'text-amber-900' : 'text-rose-900'
+                            }`}>
+                                {salesRankTab === 'top' ? (
+                                    <>
+                                        <TrendingUp className="h-4 w-4 md:h-5 md:w-5 text-amber-600"/> 
+                                        {t('topSales')}
+                                    </>
+                                ) : (
+                                    <>
+                                        <TrendingDown className="h-4 w-4 md:h-5 md:w-5 text-rose-600"/> 
+                                        {t('unsoldProducts')}
+                                    </>
+                                )}
                             </h4>
-                        </div>
-                        <div className="space-y-3 w-full">
-                            {topProducts.length > 0 ? (
-                                topProducts.map((p, idx) => (
-                                    <div key={idx} className="flex justify-between items-center bg-white p-3 md:p-3.5 rounded-xl md:rounded-2xl border border-amber-100/50 w-full shadow-sm">
-                                        <div className="flex items-center gap-3 min-w-0 flex-1">
-                                            <span className="text-xs md:text-sm font-bold text-amber-600 w-4">{idx + 1}.</span>
-                                            <span className="text-xs md:text-sm font-medium text-slate-700 truncate">{p?.name}</span>
-                                        </div>
-                                        <span className="text-[10px] md:text-xs font-semibold text-slate-500 whitespace-nowrap ml-2">
-                                            {p?.qty} vendus
+
+                            {/* Switcher Tabs */}
+                            <div className="flex bg-white/90 p-1 rounded-xl border border-slate-200/80 shadow-2xs self-start sm:self-auto">
+                                <button
+                                    type="button"
+                                    onClick={() => setSalesRankTab('top')}
+                                    className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                                        salesRankTab === 'top'
+                                            ? 'bg-amber-500 text-white shadow-xs'
+                                            : 'text-slate-600 hover:text-slate-900'
+                                    }`}
+                                >
+                                    <TrendingUp size={13} />
+                                    <span>{t('topSales')}</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setSalesRankTab('unsold')}
+                                    className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                                        salesRankTab === 'unsold'
+                                            ? 'bg-rose-500 text-white shadow-xs'
+                                            : 'text-slate-600 hover:text-slate-900'
+                                    }`}
+                                >
+                                    <TrendingDown size={13} />
+                                    <span>{t('unsoldProducts')}</span>
+                                    {unsoldProducts.length > 0 && (
+                                        <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ${
+                                            salesRankTab === 'unsold' ? 'bg-white text-rose-600' : 'bg-rose-100 text-rose-700'
+                                        }`}>
+                                            {unsoldProducts.length}
                                         </span>
-                                    </div>
-                                ))
-                            ) : (
-                                <p className="text-xs text-slate-400 italic">Pas encore de données.</p>
-                            )}
+                                    )}
+                                </button>
+                            </div>
                         </div>
+
+                        {salesRankTab === 'top' ? (
+                            <div className="space-y-3 w-full">
+                                {topProducts.length > 0 ? (
+                                    topProducts.map((p, idx) => (
+                                        <div key={p.id || idx} className="flex justify-between items-center bg-white p-3 md:p-3.5 rounded-xl md:rounded-2xl border border-amber-100/60 w-full shadow-sm">
+                                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                                                <span className="text-xs md:text-sm font-bold text-amber-600 w-4">{idx + 1}.</span>
+                                                <span className="text-xs md:text-sm font-medium text-slate-700 truncate">{p?.name}</span>
+                                            </div>
+                                            <span className="text-[10px] md:text-xs font-semibold text-slate-600 bg-amber-100/70 px-2.5 py-1 rounded-lg whitespace-nowrap ml-2">
+                                                {p?.qty} {t('sold')}
+                                            </span>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <p className="text-xs text-slate-400 italic bg-white p-3.5 rounded-xl border border-slate-100 text-center">
+                                        {language === 'ar' ? 'لا توجد بيانات مبيعات بعد.' : 'Pas encore de données de vente.'}
+                                    </p>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="space-y-3 w-full">
+                                {unsoldProducts.length > 0 ? (
+                                    unsoldProducts.map((p, idx) => (
+                                        <div key={p.id || idx} className="flex justify-between items-center bg-white p-3 md:p-3.5 rounded-xl md:rounded-2xl border border-rose-100/60 w-full shadow-sm">
+                                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                                <span className="w-2 h-2 rounded-full bg-rose-400 shrink-0"></span>
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="text-xs md:text-sm font-medium text-slate-800 truncate">{p.name}</p>
+                                                    <p className="text-[10px] text-slate-400">
+                                                        {p.price.toLocaleString(language === 'ar' ? 'ar-MA' : 'fr-MA', { style: 'currency', currency: companySettings?.defaultCurrencyCode || 'MAD' })}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                                                <span className="text-[10px] md:text-xs font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded-md whitespace-nowrap">
+                                                    {t('zeroSales')}
+                                                </span>
+                                                <span className="text-[10px] md:text-xs font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md whitespace-nowrap">
+                                                    Stock: {p.stock}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="text-xs md:text-sm text-emerald-700 flex items-center gap-2 bg-emerald-50 p-3.5 rounded-xl md:rounded-2xl border border-emerald-100/60 w-full">
+                                        <CheckCircle size={16} className="shrink-0"/>
+                                        <span>{t('allProductsSold')}</span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

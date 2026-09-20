@@ -72,7 +72,8 @@ const CreateDeliveryNoteModal: React.FC<CreateDeliveryNoteModalProps> = ({ isOpe
         if (isOpen) {
             setTimeout(() => setIsVisible(true), 10);
             if (noteToEdit) {
-                setClientId(noteToEdit.clientId);
+                const initialClientId = noteToEdit.clientId || 'client-comptoir';
+                setClientId(initialClientId);
                 setDocumentId(noteToEdit.documentId || '');
                 setDate(noteToEdit.date);
                 const initialSubject = noteToEdit.subject || noteToEdit.lineItems[0]?.subject || '';
@@ -342,9 +343,20 @@ const CreateDeliveryNoteModal: React.FC<CreateDeliveryNoteModalProps> = ({ isOpe
     }, [lineItems, calculationMode, isModeTTC]);
 
     const handleSave = async () => {
-        if (!clientId || lineItems.length === 0) return;
-        const client = clients.find(c => c.id === clientId);
-        const clientNameDisplay = client ? (client.company || client.name) : 'Client inconnu';
+        if (!clientId) return;
+        
+        let clientNameDisplay = 'Client Comptoir';
+        let savedClientId = clientId;
+        if (clientId === 'client-comptoir') {
+            clientNameDisplay = noteToEdit?.clientName || (language === 'ar' ? 'زبون مباشر (كونتوار)' : 'Client Comptoir');
+            savedClientId = '';
+        } else {
+            const client = clients.find(c => c.id === clientId);
+            clientNameDisplay = client ? (client.company || client.name) : (noteToEdit?.clientName || 'Client inconnu');
+            savedClientId = clientId;
+        }
+
+        if (lineItems.length === 0) return;
         // Store metadata in the first line item to avoid schema changes
         const updatedLineItems = [...lineItems];
         if (updatedLineItems.length > 0) {
@@ -364,7 +376,9 @@ const CreateDeliveryNoteModal: React.FC<CreateDeliveryNoteModalProps> = ({ isOpe
         try {
             await onSave({
                 documentId: documentId || undefined,
-                clientId, clientName: clientNameDisplay, date, 
+                clientId: savedClientId, 
+                clientName: clientNameDisplay, 
+                date, 
                 subject: showSubjectField ? subject : undefined, 
                 purchaseOrderNumber: showPurchaseOrderField ? purchaseOrderNumber : undefined, 
                 notes, 
@@ -425,6 +439,9 @@ const CreateDeliveryNoteModal: React.FC<CreateDeliveryNoteModalProps> = ({ isOpe
                             <label className="block text-sm font-bold text-slate-700 ml-1">{t('client')} *</label>
                             <select value={clientId} onChange={(e) => setClientId(e.target.value)} className="block w-full rounded-xl border-slate-200 bg-slate-50 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm h-12">
                                 <option value="">-- {t('select')} --</option>
+                                <option value="client-comptoir">
+                                    👤 {noteToEdit?.clientName || (language === 'ar' ? 'زبون مباشر (كونتوار / نقطة البيع POS)' : 'Client Comptoir / Passager (POS)')}
+                                </option>
                                 {clients.map(client => (<option key={client.id} value={client.id}>{client.company || client.name}</option>))}
                             </select>
                         </div>
