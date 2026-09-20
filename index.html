@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FacturaGo — Gestion commerciale et facturation simplifiées</title>
+    <meta name="description" content="FacturaGo centralise vos devis, factures, clients, produits, stocks et paiements dans une seule plateforme simple et moderne." />
+    <meta name="keywords" content="FacturaGo, facturation, devis, gestion commerciale, stock, clients, maroc, saas, logiciel de facturation" />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://facturago.online/" />
+    <meta property="og:title" content="FacturaGo — Gestion commerciale et facturation simplifiées" />
+    <meta property="og:description" content="FacturaGo centralise vos devis, factures, clients, produits, stocks et paiements dans une seule plateforme simple et moderne." />
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:title" content="FacturaGo — Gestion commerciale et facturation simplifiées" />
+    <meta property="twitter:description" content="FacturaGo centralise vos devis, factures, clients, produits, stocks et paiements dans une seule plateforme simple et moderne." />
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <script>
+      // Early interceptor & stale token cleaner before any module loads
+      (function() {
+        try {
+          if (window.fetch) {
+            const originalFetch = window.fetch;
+            Object.defineProperty(window, 'fetch', {
+              get: function() { return originalFetch; },
+              set: function() { /* ignore */ },
+              configurable: true
+            });
+          }
+        } catch (e) {}
+
+        function isAuthError(msg) {
+          if (!msg) return false;
+          var str = (typeof msg === 'string' ? msg : (msg.message || JSON.stringify(msg))).toLowerCase();
+          return str.includes('refresh token') ||
+                 str.includes('refresh_token_not_found') ||
+                 str.includes('invalid refresh token') ||
+                 str.includes('auth session missing') ||
+                 str.includes('invalid_grant') ||
+                 str.includes('jwt') ||
+                 str.includes('token not found');
+        }
+
+        function clearStaleAuthTokens() {
+          try {
+            for (var i = localStorage.length - 1; i >= 0; i--) {
+              var key = localStorage.key(i);
+              if (key && (key.indexOf('supabase.auth') !== -1 || key.indexOf('sb-') !== -1 || key.indexOf('token') !== -1)) {
+                localStorage.removeItem(key);
+              }
+            }
+          } catch(e) {}
+        }
+
+        // Clean up invalid or corrupted tokens BEFORE Supabase client reads them
+        try {
+          for (var i = localStorage.length - 1; i >= 0; i--) {
+            var k = localStorage.key(i);
+            if (k && (k.indexOf('supabase.auth') !== -1 || k.indexOf('sb-') !== -1)) {
+              var item = localStorage.getItem(k);
+              if (item) {
+                try {
+                  var data = JSON.parse(item);
+                  if (!data || !data.refresh_token || data.error) {
+                    localStorage.removeItem(k);
+                  }
+                } catch(err) {
+                  localStorage.removeItem(k);
+                }
+              }
+            }
+          }
+        } catch(e) {}
+
+        window.addEventListener('unhandledrejection', function(event) {
+          var reason = event.reason;
+          var msg = reason ? (reason.message || (typeof reason === 'string' ? reason : '')) : '';
+          if (isAuthError(msg)) {
+            event.preventDefault();
+            if (event.stopImmediatePropagation) {
+              event.stopImmediatePropagation();
+            }
+            clearStaleAuthTokens();
+            console.warn('Silenced and cleaned stale auth rejection:', msg);
+          }
+        }, true);
+
+        window.addEventListener('error', function(event) {
+          var msg = event.message || (event.error && event.error.message) || '';
+          if (isAuthError(msg)) {
+            event.preventDefault();
+            if (event.stopImmediatePropagation) {
+              event.stopImmediatePropagation();
+            }
+            clearStaleAuthTokens();
+            console.warn('Silenced and cleaned stale auth error:', msg);
+            return true;
+          }
+        }, true);
+      })();
+    </script>
+  </head>
+  <body class="h-full bg-slate-100 antialiased">
+    <div id="root" class="h-full"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>

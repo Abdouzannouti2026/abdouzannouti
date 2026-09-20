@@ -1,0 +1,38 @@
+{
+  "name": "facturago",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@google/genai": "^1.38.0",
+    "@supabase/supabase-js": "^2.49.1",
+    "@tailwindcss/vite": "^4.2.1",
+    "@zxing/browser": "^0.2.1",
+    "@zxing/library": "^0.23.0",
+    "framer-motion": "^12.38.0",
+    "html2pdf.js": "^0.14.0",
+    "html5-qrcode": "^2.3.8",
+    "lucide-react": "^0.563.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-quill-new": "^3.8.3",
+    "react-router-dom": "^7.13.0",
+    "recharts": "^3.7.0",
+    "tailwindcss": "^4.2.1",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  }
+}
