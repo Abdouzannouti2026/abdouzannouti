@@ -15,7 +15,7 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ settings, document, c
     const headerTextColor = settings.headerTextColor || '#ffffff';
     const tableHeaderBgColor = settings.tableHeaderBgColor || primaryColor;
     const showTableBorders = settings.showTableBorders !== false;
-    const borderStyle = showTableBorders ? 'border-r border-neutral-200' : '';
+    const borderStyle = showTableBorders ? 'border-r border-slate-300' : '';
     const clientPosition = settings.clientPosition || 'right';
     
     // Détermination du type de document
@@ -318,9 +318,9 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ settings, document, c
                                 )}
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-neutral-200">
+                        <tbody className="divide-y divide-slate-300">
                             {document.lineItems.map(item => (
-                                <tr key={item.id} className="text-neutral-700">
+                                <tr key={item.id} className="text-neutral-700 border-b border-slate-300">
                                     {showReference && <td className={`py-3 px-4 align-middle text-[11px] text-neutral-500 ${borderStyle}`}>{item.productCode || '-'}</td>}
                                     <td className={`py-3 px-4 align-middle ${borderStyle}`}>
                                         <div className="text-[10.5px] font-medium text-neutral-900 leading-tight" dangerouslySetInnerHTML={{ __html: item.name }} />

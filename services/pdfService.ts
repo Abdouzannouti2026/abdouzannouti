@@ -864,7 +864,7 @@ export const generateDocumentHTML = (
 
       const isFirst = idx === 0;
       const isLast = idx === activeColumns.length - 1;
-      const borderStyle = "border-bottom: 0.5px solid #d1d5db; border-right: 0.5px solid #d1d5db;";
+      const borderStyle = showTableBorders && !isLast ? "border-right: 1px solid rgba(255, 255, 255, 0.3);" : "";
 
       let displayLabel = col.label;
       if (docType === "Avoir") {
@@ -889,7 +889,8 @@ export const generateDocumentHTML = (
 
           const isFirst = cIdx === 0;
           const isLast = cIdx === activeColumns.length - 1;
-          const cellBorder = "border-right: 0.5px solid #d1d5db;";
+          const borderRight = showTableBorders && !isLast ? "border-right: 1px solid #cbd5e1;" : "";
+          const cellBorder = `border-bottom: 1px solid #cbd5e1; ${borderRight}`;
 
           const unitPriceTTC = roundPrice(item.unitPrice * (1 + item.vat / 100));
           const totalTTC =
@@ -1262,7 +1263,8 @@ export const generateDocumentHTML = (
 
         const isFirst = cIdx === 0;
         const isLast = cIdx === activeColumns.length - 1;
-        const cellBorder = "";
+        const borderRight = showTableBorders && !isLast ? "border-right: 1px solid #cbd5e1;" : "";
+        const cellBorder = `border-bottom: 1px solid #cbd5e1; ${borderRight}`;
 
         const unitPriceTTC = roundPrice(item.unitPrice * (1 + item.vat / 100));
         const totalTTC =

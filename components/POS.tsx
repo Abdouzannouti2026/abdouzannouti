@@ -5,7 +5,7 @@ import {
   Clock, Printer, X, User, ChevronDown, Sparkles, AlertCircle, Percent, 
   Maximize2, Minimize2, Volume2, VolumeX, ShieldCheck, ArrowRight, Store, 
   Package, Tag, Hash, Layers, Eye, Check, AlertTriangle, ArrowLeft,
-  Calendar, DollarSign, Receipt
+  Calendar, DollarSign, Receipt, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { Product, Client, Invoice, CompanySettings, LineItem, InvoiceStatus, ProductVariant, StockMovement } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -96,6 +96,12 @@ export const POS: React.FC<POSProps> = ({
   const [recentlyAddedToast, setRecentlyAddedToast] = useState<{ name: string; time: number } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Reset page when filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedCategory]);
   const [globalDiscountType, setGlobalDiscountType] = useState<'percentage' | 'fixed'>('percentage');
   const [globalDiscountValue, setGlobalDiscountValue] = useState<number>(0);
 
@@ -276,6 +282,13 @@ export const POS: React.FC<POSProps> = ({
       return matchName || matchCode || matchBarcode || matchVariantBarcode || matchDescription;
     });
   }, [products, searchQuery, selectedCategory]);
+
+  const itemsPerPage = 24;
+  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage);
+  const paginatedProducts = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredProducts.slice(start, start + itemsPerPage);
+  }, [filteredProducts, currentPage, itemsPerPage]);
 
   // Financial Calculations
   const { subTotalHT, totalVat, rawTotalTTC, discountAmount, finalTotalTTC } = useMemo(() => {
@@ -1057,82 +1070,138 @@ export const POS: React.FC<POSProps> = ({
           </div>
 
           {/* Product Grid */}
-          <div className="flex-1 overflow-y-auto p-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2.5 content-start">
-            {filteredProducts.length > 0 ? (
-              filteredProducts.map(product => {
-                const isOutOfStock = product.productType === 'Produit' && (product.stockQuantity || 0) <= 0;
-                const isLowStock = product.productType === 'Produit' && (product.stockQuantity || 0) > 0 && (product.stockQuantity || 0) <= (product.minStockAlert || 5);
-                
-                return (
-                  <button
-                    key={product.id}
-                    onClick={() => handleProductCardClick(product)}
-                    className="bg-white rounded-2xl p-2.5 border border-slate-200 shadow-sm hover:shadow-md hover:border-emerald-500/50 active:scale-[0.98] transition-all flex flex-col justify-between text-left group relative overflow-hidden"
-                  >
-                    {/* Top image or type icon */}
-                    <div className="w-full aspect-[4/3] rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden mb-2 relative">
-                      {product.imageUrl ? (
-                        <img 
-                          src={product.imageUrl} 
-                          alt={product.name} 
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform" 
-                          referrerPolicy="no-referrer"
-                        />
-                      ) : (
-                        <div className="flex flex-col items-center justify-center text-slate-400 group-hover:text-emerald-600 transition-colors">
-                          <Package size={28} strokeWidth={1.5} />
-                          <span className="text-[9px] font-medium text-slate-400 mt-1 uppercase tracking-wider">{product.category || 'Article'}</span>
-                        </div>
-                      )}
+          <div className="flex-1 overflow-y-auto p-3 flex flex-col justify-between">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2.5 content-start">
+              {paginatedProducts.length > 0 ? (
+                paginatedProducts.map(product => {
+                  const isOutOfStock = product.productType === 'Produit' && (product.stockQuantity || 0) <= 0;
+                  const isLowStock = product.productType === 'Produit' && (product.stockQuantity || 0) > 0 && (product.stockQuantity || 0) <= (product.minStockAlert || 5);
+                  
+                  return (
+                    <button
+                      key={product.id}
+                      onClick={() => handleProductCardClick(product)}
+                      className="bg-white rounded-2xl p-2.5 border border-slate-200 shadow-sm hover:shadow-md hover:border-emerald-500/50 active:scale-[0.98] transition-all flex flex-col justify-between text-left group relative overflow-hidden h-[195px]"
+                    >
+                      {/* Top image or type icon */}
+                      <div className="w-full h-[95px] rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center overflow-hidden mb-2 relative shrink-0">
+                        {product.imageUrl ? (
+                          <img 
+                            src={product.imageUrl} 
+                            alt={product.name} 
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform" 
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center justify-center text-slate-400 group-hover:text-emerald-600 transition-colors">
+                            <Package size={26} strokeWidth={1.5} />
+                            <span className="text-[9px] font-medium text-slate-400 mt-1 uppercase tracking-wider">{product.category || 'Article'}</span>
+                          </div>
+                        )}
 
-                      {/* Stock Pill */}
-                      {product.productType === 'Produit' && (
-                        <span className={`absolute bottom-1 right-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold shadow-xs ${
-                          isOutOfStock 
-                            ? 'bg-red-500 text-white' 
-                            : isLowStock 
-                            ? 'bg-amber-500 text-white' 
-                            : 'bg-slate-900/80 text-white backdrop-blur-xs'
-                        }`}>
-                          {product.stockQuantity || 0}
-                        </span>
-                      )}
+                        {/* Stock Pill */}
+                        {product.productType === 'Produit' && (
+                          <span className={`absolute bottom-1 right-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold shadow-xs ${
+                            isOutOfStock 
+                              ? 'bg-red-500 text-white' 
+                              : isLowStock 
+                              ? 'bg-amber-500 text-white' 
+                              : 'bg-slate-900/80 text-white backdrop-blur-xs'
+                          }`}>
+                            {product.stockQuantity || 0}
+                          </span>
+                        )}
 
-                      {/* Variants Indicator */}
-                      {product.hasVariants && product.variants && product.variants.length > 0 && (
-                        <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-indigo-600 text-white shadow-xs">
-                          {product.variants.length} var.
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Product Name & SKU */}
-                    <div className="flex-1 w-full min-w-0">
-                      <p className="font-bold text-xs text-slate-800 truncate leading-tight group-hover:text-emerald-700 transition-colors">
-                        {product.name}
-                      </p>
-                      <p className="text-[10px] text-slate-400 truncate mt-0.5">
-                        {product.barcode || product.productCode || 'Ref: -'}
-                      </p>
-                    </div>
-
-                    {/* Price & Add indicator */}
-                    <div className="w-full mt-2 pt-1.5 border-t border-slate-100 flex items-center justify-between">
-                      <span className="font-extrabold text-sm text-emerald-600">
-                        {product.salePrice.toLocaleString(language === 'ar' ? 'ar-MA' : 'fr-FR', { minimumFractionDigits: 2 })} {currency}
-                      </span>
-                      <div className="w-6 h-6 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-all shadow-xs">
-                        <Plus size={14} />
+                        {/* Variants Indicator */}
+                        {product.hasVariants && product.variants && product.variants.length > 0 && (
+                          <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-indigo-600 text-white shadow-xs">
+                            {product.variants.length} var.
+                          </span>
+                        )}
                       </div>
-                    </div>
-                  </button>
-                );
-              })
-            ) : (
-              <div className="col-span-full flex flex-col items-center justify-center py-16 text-slate-400">
-                <Package size={44} className="opacity-30 mb-2" />
-                <p className="font-medium text-sm text-slate-500">{t('noResults') || 'Aucun produit trouvé'}</p>
-                <p className="text-xs text-slate-400 mt-1">Essayez un autre mot-clé ou scannez un code-barres.</p>
+
+                      {/* Product Name & SKU */}
+                      <div className="flex-1 w-full min-w-0 flex flex-col justify-center">
+                        <p className="font-bold text-xs text-slate-800 truncate leading-tight group-hover:text-emerald-700 transition-colors">
+                          {product.name}
+                        </p>
+                        <p className="text-[10px] text-slate-400 truncate mt-0.5">
+                          {product.barcode || product.productCode || 'Ref: -'}
+                        </p>
+                      </div>
+
+                      {/* Price & Add indicator */}
+                      <div className="w-full pt-1.5 border-t border-slate-100 flex items-center justify-between shrink-0">
+                        <span className="font-extrabold text-xs sm:text-sm text-emerald-600">
+                          {product.salePrice.toLocaleString(language === 'ar' ? 'ar-MA' : 'fr-FR', { minimumFractionDigits: 2 })} {currency}
+                        </span>
+                        <div className="w-6 h-6 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-all shadow-xs">
+                          <Plus size={14} />
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })
+              ) : (
+                <div className="col-span-full flex flex-col items-center justify-center py-16 text-slate-400">
+                  <Package size={44} className="opacity-30 mb-2" />
+                  <p className="font-medium text-sm text-slate-500">{t('noResults') || 'Aucun produit trouvé'}</p>
+                  <p className="text-xs text-slate-400 mt-1">Essayez un autre mot-clé ou scannez un code-barres.</p>
+                </div>
+              )}
+            </div>
+
+            {/* Pagination Controls Bar */}
+            {totalPages > 1 && (
+              <div className="mt-4 pt-3 border-t border-slate-200 flex items-center justify-between px-2 bg-white rounded-xl py-2 shrink-0 shadow-xs">
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-semibold rounded-lg text-xs flex items-center gap-1 transition-all"
+                >
+                  <ChevronLeft size={14} />
+                  <span>{language === 'ar' ? 'السابق' : 'Précédent'}</span>
+                </button>
+
+                <div className="flex items-center gap-1.5 overflow-x-auto max-w-[60%] px-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => {
+                    // Show first, last, and pages around current
+                    if (
+                      page === 1 || 
+                      page === totalPages || 
+                      (page >= currentPage - 1 && page <= currentPage + 1)
+                    ) {
+                      return (
+                        <button
+                          key={page}
+                          onClick={() => setCurrentPage(page)}
+                          className={`w-7 h-7 rounded-lg text-xs font-bold transition-all ${
+                            currentPage === page
+                              ? 'bg-emerald-600 text-white shadow-sm'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          {page}
+                        </button>
+                      );
+                    } else if (
+                      page === currentPage - 2 || 
+                      page === currentPage + 2
+                    ) {
+                      return <span key={page} className="text-slate-400 px-0.5">...</span>;
+                    }
+                    return null;
+                  })}
+                </div>
+
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-semibold rounded-lg text-xs flex items-center gap-1 transition-all"
+                >
+                  <span>{language === 'ar' ? 'التالي' : 'Suivant'}</span>
+                  <ChevronRight size={14} />
+                </button>
               </div>
             )}
           </div>
