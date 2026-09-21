@@ -36,7 +36,9 @@ const LOCAL_STORAGE_KEYS = {
     CLIENT_POSITION: 'facturago_client_position',
     DEFAULT_CURRENCY_CODE: 'settings_default_currency_code',
     DEFAULT_TVA: 'settings_default_tva',
-    DOCUMENT_FONT_SIZE: 'facturago_document_font_size'
+    DOCUMENT_FONT_SIZE: 'facturago_document_font_size',
+    DEFAULT_THERMAL_TICKET_WIDTH: 'facturago_preferred_thermal_width',
+    DOCUMENT_COLUMNS: 'facturago_document_columns'
 };
 
 export const initDB = async (): Promise<any> => {
@@ -1027,6 +1029,24 @@ export const dbService = {
                             settings.documentFontSize = 100;
                         }
 
+                        const localTicketWidth = localStorage.getItem(LOCAL_STORAGE_KEYS.DEFAULT_THERMAL_TICKET_WIDTH);
+                        if (localTicketWidth !== null) {
+                            settings.defaultThermalTicketWidth = localTicketWidth as '80mm' | '58mm';
+                        } else if (dbCustom.defaultThermalTicketWidth !== undefined) {
+                            settings.defaultThermalTicketWidth = dbCustom.defaultThermalTicketWidth;
+                        } else if (!settings.defaultThermalTicketWidth) {
+                            settings.defaultThermalTicketWidth = '80mm';
+                        }
+
+                        const localDocColumns = localStorage.getItem(LOCAL_STORAGE_KEYS.DOCUMENT_COLUMNS);
+                        if (localDocColumns) {
+                            try {
+                                settings.documentColumns = JSON.parse(localDocColumns);
+                            } catch (e) {}
+                        } else if (dbCustom.documentColumns !== undefined && (!settings.documentColumns || settings.documentColumns.length === 0)) {
+                            settings.documentColumns = dbCustom.documentColumns;
+                        }
+
                         try {
                             localStorage.setItem('facturago_company_settings', JSON.stringify(settings));
                             localStorage.setItem(LOCAL_STORAGE_KEYS.SHOW_AMOUNT_IN_WORDS, String(settings.showAmountInWords));
@@ -1051,6 +1071,12 @@ export const dbService = {
                             localStorage.setItem(LOCAL_STORAGE_KEYS.DEFAULT_CURRENCY_CODE, settings.defaultCurrencyCode || 'MAD');
                             localStorage.setItem(LOCAL_STORAGE_KEYS.DEFAULT_TVA, String(settings.defaultTva ?? 20));
                             localStorage.setItem(LOCAL_STORAGE_KEYS.DOCUMENT_FONT_SIZE, String(settings.documentFontSize ?? 100));
+                            if (settings.defaultThermalTicketWidth) {
+                                localStorage.setItem(LOCAL_STORAGE_KEYS.DEFAULT_THERMAL_TICKET_WIDTH, settings.defaultThermalTicketWidth);
+                            }
+                            if (settings.documentColumns && settings.documentColumns.length > 0) {
+                                localStorage.setItem(LOCAL_STORAGE_KEYS.DOCUMENT_COLUMNS, JSON.stringify(settings.documentColumns));
+                            }
                         } catch (storageErr) {
                             console.error("Failed to write loaded settings to localStorage", storageErr);
                         }
@@ -1148,6 +1174,12 @@ export const dbService = {
                 if (settings.documentFontSize !== undefined) {
                     localStorage.setItem(LOCAL_STORAGE_KEYS.DOCUMENT_FONT_SIZE, String(settings.documentFontSize));
                 }
+                if (settings.defaultThermalTicketWidth !== undefined) {
+                    localStorage.setItem(LOCAL_STORAGE_KEYS.DEFAULT_THERMAL_TICKET_WIDTH, settings.defaultThermalTicketWidth);
+                }
+                if (settings.documentColumns !== undefined) {
+                    localStorage.setItem(LOCAL_STORAGE_KEYS.DOCUMENT_COLUMNS, JSON.stringify(settings.documentColumns));
+                }
             } catch (e) {
                 console.error("Error saving to localStorage in db.ts:", e);
             }
@@ -1176,7 +1208,9 @@ export const dbService = {
                     clientPosition: settings.clientPosition,
                     defaultCurrencyCode: settings.defaultCurrencyCode,
                     defaultTva: settings.defaultTva,
-                    documentFontSize: settings.documentFontSize
+                    documentFontSize: settings.documentFontSize,
+                    documentColumns: settings.documentColumns,
+                    defaultThermalTicketWidth: settings.defaultThermalTicketWidth
                 };
                 
                 const { data: existingRow, error: fetchError } = await supabase
@@ -1196,30 +1230,60 @@ export const dbService = {
 
                 const { id, ...settingsData } = settings;
                 
-                const cleanData = { ...settingsData };
-                delete (cleanData as any).created_at;
-                delete (cleanData as any).updated_at;
+                const cleanData: any = { 
+                    ...settingsData,
+                    companyName: settings.companyName ?? '',
+                    address: settings.address ?? '',
+                    phone: settings.phone ?? '',
+                    email: settings.email ?? '',
+                    website: settings.website ?? '',
+                    rc: settings.rc ?? '',
+                    ice: settings.ice ?? '',
+                    fiscalId: settings.fiscalId ?? '',
+                    patente: settings.patente ?? '',
+                    cnss: settings.cnss ?? '',
+                    capital: settings.capital ?? ''
+                };
+                delete cleanData.created_at;
+                delete cleanData.updated_at;
 
                 let resultData, resultError;
 
-                if (existingRow && existingRow.id) {
-                    const response = await supabase
-                        .from('settings')
-                        .update(cleanData) 
-                        .eq('id', existingRow.id)
-                        .select()
-                        .single();
-                    resultData = response.data;
-                    resultError = response.error;
-                } else {
-                    const payload = { ...cleanData, user_id: userId, company_id: companyId };
-                    const response = await supabase
-                        .from('settings')
-                        .insert(payload)
-                        .select()
-                        .single();
-                    resultData = response.data;
-                    resultError = response.error;
+                const executeSave = async (dataToSave: any) => {
+                    if (existingRow && existingRow.id) {
+                        return await supabase
+                            .from('settings')
+                            .update(dataToSave) 
+                            .eq('id', existingRow.id)
+                            .select()
+                            .single();
+                    } else {
+                        const payload = { ...dataToSave, user_id: userId, company_id: companyId };
+                        return await supabase
+                            .from('settings')
+                            .insert(payload)
+                            .select()
+                            .single();
+                    }
+                };
+
+                let response = await executeSave(cleanData);
+                resultData = response.data;
+                resultError = response.error;
+
+                // If Supabase reports a missing column, remove it and retry
+                if (resultError) {
+                    const errorMsg = resultError.message || '';
+                    const colMatch = errorMsg.match(/Could not find the '([^']+)' column/) || 
+                                     errorMsg.match(/column "([^"]+)" of relation "settings" does not exist/);
+                    if (colMatch && colMatch[1]) {
+                        const badCol = colMatch[1];
+                        console.warn(`Column '${badCol}' missing in settings table, retrying save without it.`);
+                        delete cleanData[badCol];
+                        response = await executeSave(cleanData);
+                        resultData = response.data;
+                        resultError = response.error;
+                    }
                 }
 
                 if (resultError) {
@@ -1247,7 +1311,9 @@ export const dbService = {
                     clientPosition: settings.clientPosition,
                     defaultCurrencyCode: settings.defaultCurrencyCode,
                     defaultTva: settings.defaultTva,
-                    documentFontSize: settings.documentFontSize
+                    documentFontSize: settings.documentFontSize,
+                    documentColumns: settings.documentColumns,
+                    defaultThermalTicketWidth: settings.defaultThermalTicketWidth
                 };
                 return finalResult;
             } catch (err: any) {

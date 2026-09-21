@@ -236,7 +236,27 @@ const DEFAULT_COLUMNS: DocumentColumn[] = [
   { id: "unitPrice", label: "P.U. HT", visible: true, order: 4 },
   { id: "vat", label: "TVA", visible: true, order: 5 },
   { id: "total", label: "Total HT", visible: true, order: 6 },
+  { id: "avoir", label: "AV", visible: false, order: 7 },
 ];
+
+export const isAvoirCol = (c: any): boolean => {
+  if (!c) return false;
+  const cid = String(c.id || "").toLowerCase().trim();
+  const clbl = String(c.label || "").toLowerCase().trim();
+  return (
+    cid === "avoir" ||
+    cid === "av" ||
+    cid === "qteavoir" ||
+    cid === "qte_avoir" ||
+    cid.includes("avoir") ||
+    clbl === "av" ||
+    clbl === "qté avoir" ||
+    clbl === "qte avoir" ||
+    clbl.includes("avoir") ||
+    clbl.includes("إرجاع") ||
+    clbl.includes("ارجاع")
+  );
+};
 
 export const generateDocumentHTML = (
   docType: DocumentType,
@@ -499,6 +519,30 @@ export const generateDocumentHTML = (
         (c.id === "reference" &&
           doc.lineItems.some((item) => !!item.productCode)),
     );
+  }
+
+  // CRITICAL USER REQUIREMENT:
+  // "la colonne dyal avoir wakha tkon active makhashash tban f les facture devis bl bon de commande tban ghir mnin nsawb avoirs"
+  // The 'avoir' column, even if active/visible in settings, MUST NOT appear on Factures, Devis, BL, or Bon de Commande!
+  // It must ONLY appear when creating or viewing Avoirs (Facture d'Avoir)!
+  if (docType !== "Avoir") {
+    activeColumns = activeColumns.filter((c) => !isAvoirCol(c));
+  } else {
+    // When docType === "Avoir":
+    // Check if the avoir column should be shown. If items have invoiceQuantity,
+    // ensure both quantity (Qté Facturée) and avoir (Qté Avoir / Retour) are present in the table!
+    const hasInvoiceQty = doc.lineItems.some((item) => item.invoiceQuantity !== undefined);
+    const hasAvoirCol = activeColumns.some((c) => isAvoirCol(c));
+    if (hasInvoiceQty && !hasAvoirCol) {
+      const qtyIdx = activeColumns.findIndex((c) => c.id === "quantity");
+      const insertAt = qtyIdx !== -1 ? qtyIdx + 1 : activeColumns.length;
+      activeColumns.splice(insertAt, 0, {
+        id: "avoir",
+        label: lang === "ar" ? "كمية الإرجاع" : "AV",
+        visible: true,
+        order: 2.05,
+      });
+    }
   }
 
   if (isDeliveryNote && !showPrices) {
@@ -801,6 +845,9 @@ export const generateDocumentHTML = (
       } else if (col.id === "totalWeight") {
         align = "center";
         width = "width: 7%;";
+      } else if (col.id === "avoir" || isAvoirCol(col)) {
+        align = "center";
+        width = "width: 7%;";
       } else if (col.id === "vat") {
         align = "center";
         width = "width: 6%;";
@@ -817,9 +864,18 @@ export const generateDocumentHTML = (
 
       const isFirst = idx === 0;
       const isLast = idx === activeColumns.length - 1;
-      const borderStyle = "";
+      const borderStyle = "border-bottom: 0.5px solid #d1d5db; border-right: 0.5px solid #d1d5db;";
 
-      return `<th style="padding: ${options?.isPDFDownload ? "6px 12px 14px 12px" : "10px 12px"}; text-align: ${align}; vertical-align: middle; line-height: 1.2; font-size: ${fs(11)}; text-transform: uppercase; white-space: nowrap; letter-spacing: 0.05em; ${borderStyle} ${width}">${col.label}</th>`;
+      let displayLabel = col.label;
+      if (docType === "Avoir") {
+        if (col.id === "quantity" && doc.lineItems.some((i) => i.invoiceQuantity !== undefined)) {
+          displayLabel = lang === "ar" ? "الكمية المفوترة" : "Qté Facturée";
+        } else if (col.id === "avoir" || isAvoirCol(col)) {
+          displayLabel = col.label || (lang === "ar" ? "كمية الإرجاع" : "AV");
+        }
+      }
+
+      return `<th style="padding: ${options?.isPDFDownload ? "6px 12px 14px 12px" : "10px 12px"}; text-align: ${align}; vertical-align: middle; line-height: 1.2; font-size: ${fs(11)}; text-transform: uppercase; white-space: nowrap; letter-spacing: 0.05em; ${borderStyle} ${width}">${displayLabel}</th>`;
     })
     .join("");
 
@@ -833,7 +889,7 @@ export const generateDocumentHTML = (
 
           const isFirst = cIdx === 0;
           const isLast = cIdx === activeColumns.length - 1;
-          const cellBorder = (isLast || !showTableBorders) ? "" : "border-right: 0.5px solid #d1d5db;";
+          const cellBorder = "border-right: 0.5px solid #d1d5db;";
 
           const unitPriceTTC = roundPrice(item.unitPrice * (1 + item.vat / 100));
           const totalTTC =
@@ -867,8 +923,13 @@ export const generateDocumentHTML = (
             content = String(finalDaysDisplayValue);
             align = "center";
             style = `font-size: ${fs(10.5)}; font-weight: 700; color: #111827;`;
+          } else if (isAvoirCol(col)) {
+            const returnQty = (item as any).avoirQuantity ?? (item as any).returnQuantity ?? (item as any).returnedQuantity ?? item.quantity;
+            content = returnQty != null && returnQty !== "" ? String(returnQty) : "-";
+            align = "center";
+            style = `font-size: ${fs(10.5)}; font-weight: 700; color: #16a34a;`;
           } else {
-            switch (col.id) {
+            switch (col.id as any) {
               case "reference":
                 content = item.productCode || "-";
                 align = "left";
@@ -881,7 +942,11 @@ export const generateDocumentHTML = (
                         `;
                 break;
               case "quantity":
-                content = item.quantity.toString();
+                if (docType === "Avoir" && item.invoiceQuantity !== undefined) {
+                  content = item.invoiceQuantity.toString();
+                } else {
+                  content = item.quantity.toString();
+                }
                 align = "center";
                 style = `font-weight: 700; font-size: ${fs(10.5)};`;
                 break;
@@ -950,6 +1015,16 @@ export const generateDocumentHTML = (
                 align = "right";
                 style = `font-weight: 700; font-size: ${fs(10.5)};`;
                 break;
+              case "avoir":
+              case "av":
+              case "AV":
+              case "qteAvoir":
+              case "qte_avoir":
+                const returnQty = (item as any).avoirQuantity ?? (item as any).returnQuantity ?? (item as any).returnedQuantity ?? item.quantity;
+                content = returnQty != null && returnQty !== "" ? String(returnQty) : "-";
+                align = "center";
+                style = `font-size: ${fs(10.5)}; font-weight: 700; color: #16a34a;`;
+                break;
               case "days":
                 content = String(finalDaysDisplayValue);
                 align = "center";
@@ -961,7 +1036,7 @@ export const generateDocumentHTML = (
             }
           }
 
-          return `<td style="padding: ${options?.isPDFDownload ? "6px 12px 14px 12px" : "10px 12px"}; border-bottom: 0.5px solid #d1d5db; ${cellBorder} text-align: ${align}; vertical-align: middle; ${style}">${content}</td>`;
+          return `<td style="padding: ${options?.isPDFDownload ? "6px 12px 14px 12px" : "10px 12px"}; ${cellBorder} text-align: ${align}; vertical-align: middle; ${style}">${content}</td>`;
         })
         .join("");
 
@@ -1058,7 +1133,7 @@ export const generateDocumentHTML = (
     `;
 
   const itemsTableHtml = `
-        <table style="width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 20px;">
+        <table style="width: 100%; border-collapse: collapse; border-spacing: 0; margin-bottom: 20px;">
             <thead>
                 <tr style="background-color: ${tableHeaderBgColor}; color: ${headerTextColor}; -webkit-print-color-adjust: exact;">
                     ${headerRowHtml}
@@ -1187,7 +1262,7 @@ export const generateDocumentHTML = (
 
         const isFirst = cIdx === 0;
         const isLast = cIdx === activeColumns.length - 1;
-        const cellBorder = (isLast || !showTableBorders) ? "" : "border-right: 0.5px solid #d1d5db;";
+        const cellBorder = "";
 
         const unitPriceTTC = roundPrice(item.unitPrice * (1 + item.vat / 100));
         const totalTTC =
@@ -1217,8 +1292,13 @@ export const generateDocumentHTML = (
           content = String(finalDaysDisplayValue);
           align = "center";
           style = `font-size: ${fs(10.5)}; font-weight: 700; color: #111827;`;
+        } else if (isAvoirCol(col)) {
+          const returnQty = (item as any).avoirQuantity ?? (item as any).returnQuantity ?? (item as any).returnedQuantity ?? item.quantity;
+          content = returnQty != null && returnQty !== "" ? String(returnQty) : "-";
+          align = "center";
+          style = `font-size: ${fs(10.5)}; font-weight: 700; color: #16a34a;`;
         } else {
-          switch (col.id) {
+          switch (col.id as any) {
             case "reference":
               content = item.productCode || "-";
               align = "left";
@@ -1231,7 +1311,11 @@ export const generateDocumentHTML = (
                     `;
               break;
             case "quantity":
-              content = item.quantity.toString();
+              if (docType === "Avoir" && item.invoiceQuantity !== undefined) {
+                content = item.invoiceQuantity.toString();
+              } else {
+                content = item.quantity.toString();
+              }
               align = "center";
               style = `font-weight: 700; font-size: ${fs(10.5)};`;
               break;
@@ -1301,6 +1385,16 @@ export const generateDocumentHTML = (
               align = "right";
               style = `font-weight: 700; font-size: ${fs(10.5)};`;
               break;
+            case "avoir":
+            case "av":
+            case "AV":
+            case "qteAvoir":
+            case "qte_avoir":
+              const returnQty = (item as any).avoirQuantity ?? (item as any).returnQuantity ?? (item as any).returnedQuantity ?? item.quantity;
+              content = returnQty != null && returnQty !== "" ? String(returnQty) : "-";
+              align = "center";
+              style = `font-size: ${fs(10.5)}; font-weight: 700; color: #16a34a;`;
+              break;
             case "days":
               content = String(finalDaysDisplayValue);
               align = "center";
@@ -1312,7 +1406,7 @@ export const generateDocumentHTML = (
           }
         }
 
-        return `<td style="padding: ${options?.isPDFDownload ? "6px 12px 14px 12px" : "10px 12px"}; border-bottom: 0.5px solid #d1d5db; ${cellBorder} text-align: ${align}; vertical-align: middle; ${style}">${content}</td>`;
+        return `<td style="padding: ${options?.isPDFDownload ? "6px 12px 14px 12px" : "10px 12px"}; ${cellBorder} text-align: ${align}; vertical-align: middle; ${style}">${content}</td>`;
       })
       .join("");
   };
@@ -1439,7 +1533,7 @@ export const generateDocumentHTML = (
     const pageRowsHtml = pageItems
       .map((item, idx) => {
         const cellsHtml = getCellsHtml(item);
-        return `<tr class="item-row" style="background-color: ${idx % 2 === 0 ? "#fff" : "#f9fafb"};">${cellsHtml}</tr>`;
+        return `<tr class="item-row">${cellsHtml}</tr>`;
       })
       .join("");
 
@@ -1482,25 +1576,26 @@ export const generateDocumentHTML = (
                     </div>
                 </div>
 
-                <div class="content-grow">
+                <div class="content-grow" style="display: flex; flex-direction: column; border-left: 0.5px solid #d1d5db; border-right: 0.5px solid #d1d5db; border-bottom: 0.5px solid #d1d5db;">
                     ${
                       pageItems.length > 0
                         ? `
-                    <table style="width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 20px;">
-                        <thead>
-                            <tr style="background-color: ${tableHeaderBgColor}; color: ${headerTextColor}; -webkit-print-color-adjust: exact;">
-                                ${headerRowHtml}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${pageRowsHtml}
-                        </tbody>
-                    </table>
+                      <table style="width: 100%; border-collapse: collapse; border-spacing: 0;">
+                          <thead>
+                              <tr style="background-color: ${tableHeaderBgColor}; color: ${headerTextColor}; -webkit-print-color-adjust: exact;">
+                                  ${headerRowHtml}
+                              </tr>
+                          </thead>
+                          <tbody>
+                              ${pageRowsHtml}
+                          </tbody>
+                      </table>
                     `
                         : ""
                     }
-                    ${isLastPage ? totalsHtml : ""}
+                    <div style="flex-grow: 1;"></div>
                 </div>
+                ${isLastPage ? `<div style="margin-top: 20px;">${totalsHtml}</div>` : ""}
 
                 <div style="position: absolute; bottom: 4mm; left: 15mm; right: 15mm; padding-top: 4px; border-top: 1px solid #000000; z-index: 2; background: white;">
                     ${footerHtml}
@@ -1980,7 +2075,7 @@ export const generateThermalTicketHtml = (
   const widthType = options?.width || settings?.defaultThermalTicketWidth || '80mm';
   const widthMm = widthType === '58mm' ? 58 : (options?.customWidthMm || 80);
   const is58 = widthMm <= 60;
-  const innerWidthMm = is58 ? 48 : (widthMm - 6);
+  const innerWidthMm = is58 ? 56 : (widthMm - 4);
 
   const fontStyle = options?.fontStyle || 'modern';
   const logoSize = options?.logoSize || 'small';
@@ -2081,9 +2176,11 @@ export const generateThermalTicketHtml = (
       ? `${item.quantity} [${item.length}x${item.height || (item as any).width || 1}]`
       : `${item.quantity}`;
 
+    const itemName = item.name || (item as any).designation || (item as any).productName || item.description || item.productCode || 'Article';
+
     return `
       <div class="ticket-item">
-        <div class="item-name">${item.description || item.productCode || 'Article'}</div>
+        <div class="item-name">${itemName}</div>
         <div class="item-calc">
           <span class="item-qty">${qtyDisplay} x ${unitPriceDisplay.toFixed(2)}</span>
           <span class="item-total">${lineTotal.toFixed(2)}</span>
@@ -2188,12 +2285,14 @@ export const generateThermalTicketHtml = (
       justify-content: center;
       align-items: flex-start;
       padding: ${options?.isPrintMode ? '16px 8px' : '0'};
+      margin: 0 !important;
     }
     #thermal-content {
-      width: ${innerWidthMm}mm !important;
-      max-width: 100% !important;
+      width: 100% !important;
+      max-width: ${innerWidthMm}mm !important;
       margin: 0 auto !important;
-      padding: ${is58 ? '2mm 1.5mm' : '3mm 2mm'} !important;
+      padding: ${is58 ? '1mm 1.5mm' : '3mm 2mm'} !important;
+      box-sizing: border-box !important;
       background: #ffffff;
       ${options?.isPrintMode ? 'box-shadow: 0 4px 16px rgba(0,0,0,0.12); border-radius: 4px; border: 1px solid #e2e8f0;' : ''}
       page-break-inside: avoid !important;
@@ -2205,7 +2304,7 @@ export const generateThermalTicketHtml = (
     }
     @media print {
       html, body {
-        width: ${widthMm}mm !important;
+        width: 100% !important;
         max-width: ${widthMm}mm !important;
         min-width: ${widthMm}mm !important;
         margin: 0 !important;
@@ -2215,14 +2314,16 @@ export const generateThermalTicketHtml = (
       }
       .ticket-screen-wrap {
         padding: 0 !important;
+        margin: 0 !important;
         display: block !important;
         width: 100% !important;
       }
       #thermal-content {
-        width: ${innerWidthMm}mm !important;
-        max-width: ${innerWidthMm}mm !important;
+        width: 100% !important;
+        max-width: ${widthMm}mm !important;
         margin: 0 auto !important;
-        padding: ${is58 ? '1.5mm 1mm' : '2.5mm 1.5mm'} !important;
+        padding: ${is58 ? '0.5mm 1mm 1.5mm 1mm' : '2.5mm 1.5mm'} !important;
+        box-sizing: border-box !important;
         box-shadow: none !important;
         border-radius: 0 !important;
         border: none !important;
@@ -2236,14 +2337,14 @@ export const generateThermalTicketHtml = (
     /* Dividers */
     .receipt-divider {
       border-top: 1px dashed #000;
-      margin: 3px 0;
+      margin: ${is58 ? '2px 0' : '3px 0'};
       width: 100%;
     }
 
     /* Header */
     .receipt-header {
       text-align: center;
-      margin-bottom: 3px;
+      margin-bottom: ${is58 ? '2px' : '3px'};
     }
     .receipt-logo {
       max-height: ${logoMaxHeight};
@@ -2251,7 +2352,7 @@ export const generateThermalTicketHtml = (
       width: auto;
       height: auto;
       object-fit: contain;
-      margin: 0 auto 3px;
+      margin: 0 auto 2px;
       display: block;
       filter: grayscale(100%) contrast(150%);
     }
@@ -2260,19 +2361,19 @@ export const generateThermalTicketHtml = (
       font-weight: 800;
       text-transform: uppercase;
       letter-spacing: 0.2px;
-      line-height: 1.2;
-      margin-bottom: 2px;
+      line-height: 1.15;
+      margin-bottom: 1px;
       text-align: center;
     }
     .company-details {
-      font-size: ${is58 ? '7pt' : '7.5pt'};
+      font-size: ${is58 ? '6.8pt' : '7.5pt'};
       color: #111;
-      line-height: 1.25;
+      line-height: 1.2;
       margin-bottom: 1px;
       text-align: center;
     }
     .company-ice {
-      font-size: ${is58 ? '7pt' : '7.5pt'};
+      font-size: ${is58 ? '6.8pt' : '7.5pt'};
       font-weight: 700;
       margin-top: 1px;
       text-align: center;
@@ -2281,9 +2382,9 @@ export const generateThermalTicketHtml = (
       display: inline-block;
       font-size: ${is58 ? '7.5pt' : '8.5pt'};
       font-weight: 800;
-      letter-spacing: 0.8px;
+      letter-spacing: 0.5px;
       text-transform: uppercase;
-      margin: 2px 0 1px;
+      margin: ${is58 ? '1.5px 0' : '2px 0 1px'};
       padding: 1px 4px;
       border: 1px solid #000;
       border-radius: 2px;
@@ -2293,8 +2394,8 @@ export const generateThermalTicketHtml = (
     /* Metadata */
     .receipt-meta {
       font-size: ${is58 ? '7pt' : '8pt'};
-      line-height: 1.3;
-      margin: 2px 0;
+      line-height: 1.25;
+      margin: ${is58 ? '1.5px 0' : '2px 0'};
     }
     .meta-row {
       display: flex;
@@ -2312,52 +2413,52 @@ export const generateThermalTicketHtml = (
       font-size: ${is58 ? '7pt' : '7.5pt'};
       font-weight: 800;
       text-transform: uppercase;
-      letter-spacing: 0.3px;
-      padding: 1px 0 2px;
+      letter-spacing: 0.2px;
+      padding: ${is58 ? '1px 0' : '1px 0 2px'};
       border-bottom: 1px solid #000;
-      margin-bottom: 2px;
+      margin-bottom: ${is58 ? '1px' : '2px'};
     }
 
     /* Items */
     .ticket-item {
-      padding: 1.5px 0;
+      padding: ${is58 ? '1px 0' : '1.5px 0'};
     }
     .item-name {
-      font-size: ${is58 ? '7.5pt' : '8.5pt'};
+      font-size: ${is58 ? '8pt' : '8.5pt'};
       font-weight: 700;
-      line-height: 1.2;
+      line-height: 1.15;
       word-break: break-word;
     }
     .item-calc {
       display: flex;
       justify-content: space-between;
-      font-size: ${is58 ? '7pt' : '8pt'};
+      font-size: ${is58 ? '7.2pt' : '8pt'};
       color: #000;
-      line-height: 1.2;
+      line-height: 1.15;
     }
     .item-qty {
-      padding-left: 3px;
+      padding-left: 0;
       color: #111;
     }
     .item-total {
-      font-weight: 700;
+      font-weight: 800;
     }
 
     /* Totals */
     .receipt-totals {
-      font-size: ${is58 ? '7.5pt' : '8pt'};
-      margin-top: 2px;
+      font-size: ${is58 ? '7.2pt' : '8pt'};
+      margin-top: ${is58 ? '1.5px' : '2px'};
     }
     .total-row {
       display: flex;
       justify-content: space-between;
-      line-height: 1.3;
+      line-height: 1.25;
     }
     .grand-total-box {
       border-top: 1.5px solid #000;
       border-bottom: 1.5px solid #000;
-      padding: 2.5px 0;
-      margin: 2.5px 0;
+      padding: ${is58 ? '2px 0' : '2.5px 0'};
+      margin: ${is58 ? '2px 0' : '2.5px 0'};
       font-size: ${is58 ? '9.5pt' : '11pt'};
       font-weight: 900;
       display: flex;
@@ -2370,21 +2471,21 @@ export const generateThermalTicketHtml = (
       display: flex;
       justify-content: space-between;
       font-size: ${is58 ? '7pt' : '7.5pt'};
-      margin-top: 2px;
+      margin-top: 1.5px;
     }
     .barcode-block {
       text-align: center;
-      margin: 5px 0 2px;
+      margin: ${is58 ? '3px 0 1px' : '5px 0 2px'};
     }
     .barcode-img {
       max-width: ${is58 ? '85px' : '110px'};
-      height: 20px;
+      height: ${is58 ? '18px' : '20px'};
       margin: 0 auto;
       display: block;
     }
     .barcode-text {
       font-size: ${is58 ? '6.5pt' : '7pt'};
-      letter-spacing: 1.2px;
+      letter-spacing: 1px;
       margin-top: 1px;
       font-weight: 600;
       text-align: center;
@@ -2393,16 +2494,16 @@ export const generateThermalTicketHtml = (
     /* Footer */
     .receipt-footer {
       text-align: center;
-      margin-top: 5px;
-      padding-top: 3px;
+      margin-top: ${is58 ? '3px' : '5px'};
+      padding-top: ${is58 ? '2px' : '3px'};
       border-top: 1px dashed #000;
       font-size: ${is58 ? '7pt' : '7.5pt'};
-      line-height: 1.25;
+      line-height: 1.2;
     }
     .footer-app {
-      font-size: ${is58 ? '6pt' : '6.5pt'};
+      font-size: ${is58 ? '5.8pt' : '6.5pt'};
       color: #555;
-      margin-top: 2px;
+      margin-top: 1px;
       letter-spacing: 0.2px;
     }
   </style>

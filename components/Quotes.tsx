@@ -6,11 +6,10 @@ import Header from './Header';
 import ChangeStatusModal from './ChangeStatusModal';
 import CreateQuoteModal from './CreateQuoteModal';
 import ConfirmationModal from './ConfirmationModal';
-import { Plus, Search, Pencil, RefreshCw, Download, FileText, MoreVertical, CheckCircle, Loader2, Printer, Trash2, ChevronLeft, ChevronRight, MessageSquare, Eye } from 'lucide-react';
+import { Plus, Search, Pencil, RefreshCw, Download, FileText, MoreVertical, CheckCircle, Loader2, Printer, Trash2, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
 import { Quote, QuoteStatus, Client, Product, CompanySettings } from '../types';
 import { generatePDF, printDocument } from '../services/pdfService';
 import { useLanguage } from '../contexts/LanguageContext';
-import { shareDocument } from '../services/shareService';
 import DocumentPreviewModal from './DocumentPreviewModal';
 
 const getStatusBadge = (status: QuoteStatus) => {
@@ -569,19 +568,6 @@ const Quotes: React.FC<QuotesProps> = ({
                             className="flex w-full items-center px-3 py-2 text-[13px] font-semibold text-slate-700 rounded-xl hover:bg-slate-50 hover:text-emerald-600 transition-colors group disabled:opacity-50"
                         >
                             {isDownloading ? <Loader2 size={16} className={`animate-spin ${isRTL ? 'ml-3' : 'mr-3'}`} /> : <Download size={16} className={`text-slate-500 group-hover:text-emerald-600 ${isRTL ? 'ml-3' : 'mr-3'}`} />} {t('download')}
-                        </button>
-
-                        <button 
-                            onClick={async () => {
-                                const client = clients.find(c => c.id === activeQuote.clientId);
-                                setSelectedDocForPreview(activeQuote);
-                                setSelectedRecipientForPreview(client);
-                                setIsPreviewModalOpen(true);
-                                setActiveMenuId(null);
-                            }}
-                            className="flex w-full items-center px-3 py-2 text-[13px] font-semibold text-slate-700 rounded-xl hover:bg-slate-50 hover:text-emerald-600 transition-colors group"
-                        >
-                            <MessageSquare size={16} className={`text-emerald-500 ${isRTL ? 'ml-3' : 'mr-3'}`} /> {t('sendWhatsApp')}
                         </button>
 
                         <div className="border-t border-slate-100 my-1 mx-2"></div>

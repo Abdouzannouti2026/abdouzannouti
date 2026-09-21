@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import Header from './Header';
-import { CreditCard, FileText, CheckCircle, Download, Plus, Loader2, Pencil, Printer, MoreVertical, Trash2, ArrowLeftRight, ChevronLeft, ChevronRight, Search, MessageSquare, Eye, Receipt } from 'lucide-react';
+import { CreditCard, FileText, CheckCircle, Download, Plus, Loader2, Pencil, Printer, MoreVertical, Trash2, ArrowLeftRight, ChevronLeft, ChevronRight, Search, Eye, Receipt } from 'lucide-react';
 import { Invoice, InvoiceStatus, Payment, Client, Product, CompanySettings, PurchaseOrder } from '../types';
 import CreateInvoiceModal from './CreateInvoiceModal';
 import ConfirmationModal from './ConfirmationModal';
@@ -11,7 +11,6 @@ import InvoiceReportModal from './InvoiceReportModal';
 import ThermalTicketModal from './ThermalTicketModal';
 import { generatePDF, printDocument, printThermalTicket } from '../services/pdfService';
 import { useLanguage } from '../contexts/LanguageContext';
-import { shareDocument } from '../services/shareService';
 import DocumentPreviewModal from './DocumentPreviewModal';
 
 const getStatusBadge = (status: InvoiceStatus) => {
@@ -708,24 +707,11 @@ const Invoices: React.FC<InvoicesProps> = ({ invoices, onUpdateInvoiceStatus, on
                         </button>
 
                         <button 
-                            onClick={() => { handleDownload(activeInvoice); setActiveMenuId(null); }}
+                            onClick={() => { handleDownload(activeInvoice); setActiveMenuId(null); }} 
                             disabled={isDownloading}
                             className="flex w-full items-center px-3 py-2 text-[13px] font-semibold text-slate-700 rounded-xl hover:bg-slate-50 hover:text-emerald-600 transition-colors group disabled:opacity-50"
                         >
                             {isDownloading ? <Loader2 size={16} className={`animate-spin ${isRTL ? 'ml-3' : 'mr-3'}`} /> : <Download size={16} className={`text-slate-500 group-hover:text-emerald-600 ${isRTL ? 'ml-3' : 'mr-3'}`} />} {t('download')}
-                        </button>
-
-                        <button 
-                            onClick={async () => {
-                                const client = getInvoiceRecipient(activeInvoice);
-                                setSelectedDocForPreview(activeInvoice);
-                                setSelectedRecipientForPreview(client);
-                                setIsPreviewModalOpen(true);
-                                setActiveMenuId(null);
-                            }}
-                            className="flex w-full items-center px-3 py-2 text-[13px] font-semibold text-slate-700 rounded-xl hover:bg-slate-50 hover:text-emerald-600 transition-colors group"
-                        >
-                            <MessageSquare size={16} className={`text-emerald-500 ${isRTL ? 'ml-3' : 'mr-3'}`} /> {t('sendWhatsApp')}
                         </button>
 
                         <div className="border-t border-slate-100 my-1 mx-2"></div>

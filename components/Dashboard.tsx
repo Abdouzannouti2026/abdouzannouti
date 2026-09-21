@@ -63,7 +63,7 @@ const Dashboard: React.FC<DashboardProps> = ({ invoices, clients, products, comp
         day: 'numeric' 
     });
 
-    const { totalRevenue, unpaidInvoicesCount, unpaidAmount, monthlyExpenses } = useMemo(() => {
+    const { totalRevenue, grossRevenue, creditNotesDeduction, unpaidInvoicesCount, unpaidAmount, monthlyExpenses } = useMemo(() => {
         const today = new Date();
         const currentMonth = today.getMonth();
         const currentYear = today.getFullYear();
@@ -83,9 +83,11 @@ const Dashboard: React.FC<DashboardProps> = ({ invoices, clients, products, comp
         });
 
         const validatedCreditNotesAmount = creditNotes
-            .filter(cn => cn.status === CreditNoteStatus.Validated)
+            .filter(cn => cn.status === CreditNoteStatus.Validated || cn.status === CreditNoteStatus.Refunded)
             .reduce((sum, cn) => sum + cn.amount, 0);
         
+        // Chiffre d'affaires net (Déduction des avoirs/retours)
+        const netRevenue = Math.max(0, totalRevenue - validatedCreditNotesAmount);
         unpaidAmount = Math.max(0, unpaidAmount - validatedCreditNotesAmount);
 
         const monthlyExpenses = expenses
@@ -102,7 +104,7 @@ const Dashboard: React.FC<DashboardProps> = ({ invoices, clients, products, comp
             })
             .reduce((sum, exp) => sum + exp.amount, 0);
 
-        return { totalRevenue, unpaidInvoicesCount, unpaidAmount, monthlyExpenses };
+        return { totalRevenue: netRevenue, grossRevenue: totalRevenue, creditNotesDeduction: validatedCreditNotesAmount, unpaidInvoicesCount, unpaidAmount, monthlyExpenses };
     }, [invoices, creditNotes, expenses]);
 
     const stats = [
@@ -112,7 +114,9 @@ const Dashboard: React.FC<DashboardProps> = ({ invoices, clients, products, comp
             icon: DollarSign, 
             color: 'bg-emerald-500',
             iconColor: 'text-emerald-600',
-            desc: t('totalRevenueDesc')
+            desc: creditNotesDeduction > 0 
+                ? `${t('totalRevenueDesc')} (${language === 'ar' ? 'صافي بعد خصم الإرجاعات' : 'Net déduit des avoirs'}: -${creditNotesDeduction.toLocaleString(language === 'ar' ? 'ar-MA' : 'fr-MA', { style: 'currency', currency: companySettings?.defaultCurrencyCode || 'MAD', maximumFractionDigits: 0 })})`
+                : t('totalRevenueDesc')
         },
         { 
             name: t('expenses'), 
@@ -152,10 +156,19 @@ const Dashboard: React.FC<DashboardProps> = ({ invoices, clients, products, comp
             });
         };
 
+        const getValidatedCreditNotes = (start: Date, end: Date) => {
+            return creditNotes.filter(cn => {
+                if (cn.status !== CreditNoteStatus.Validated && cn.status !== CreditNoteStatus.Refunded) return false;
+                const d = new Date(cn.date);
+                return d >= start && d <= end;
+            });
+        };
+
         if (chartPeriod === 'day') {
             const startOfDay = new Date(today.setHours(0,0,0,0));
             const endOfDay = new Date(today.setHours(23,59,59,999));
             const relevantInvoices = getPaidInvoices(startOfDay, endOfDay);
+            const relevantCreditNotes = getValidatedCreditNotes(startOfDay, endOfDay);
 
             for (let i = 0; i <= 24; i += 4) {
                 const label = `${i}h`;
@@ -163,7 +176,11 @@ const Dashboard: React.FC<DashboardProps> = ({ invoices, clients, products, comp
                     const h = new Date(inv.paymentDate || inv.date).getHours();
                     return (h >= i && h < i + 4) ? acc + inv.amount : acc;
                 }, 0);
-                data.push({ name: label, Revenu: amount });
+                const cnAmount = relevantCreditNotes.reduce((acc, cn) => {
+                    const h = new Date(cn.date).getHours();
+                    return (h >= i && h < i + 4) ? acc + cn.amount : acc;
+                }, 0);
+                data.push({ name: label, Revenu: Math.max(0, amount - cnAmount) });
             }
 
         } else if (chartPeriod === 'week') {
@@ -177,6 +194,7 @@ const Dashboard: React.FC<DashboardProps> = ({ invoices, clients, products, comp
             endOfWeek.setHours(23,59,59,999);
 
             const relevantInvoices = getPaidInvoices(startOfWeek, endOfWeek);
+            const relevantCreditNotes = getValidatedCreditNotes(startOfWeek, endOfWeek);
             const days = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 
             data = days.map((day, index) => {
@@ -185,13 +203,19 @@ const Dashboard: React.FC<DashboardProps> = ({ invoices, clients, products, comp
                     let mappedIndex = d === 0 ? 6 : d - 1;
                     return mappedIndex === index ? acc + inv.amount : acc;
                 }, 0);
-                return { name: day, Revenu: amount };
+                const cnAmount = relevantCreditNotes.reduce((acc, cn) => {
+                    let d = new Date(cn.date).getDay();
+                    let mappedIndex = d === 0 ? 6 : d - 1;
+                    return mappedIndex === index ? acc + cn.amount : acc;
+                }, 0);
+                return { name: day, Revenu: Math.max(0, amount - cnAmount) };
             });
 
         } else if (chartPeriod === 'month') {
             const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
             const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
             const relevantInvoices = getPaidInvoices(startOfMonth, endOfMonth);
+            const relevantCreditNotes = getValidatedCreditNotes(startOfMonth, endOfMonth);
             const daysInMonth = endOfMonth.getDate();
 
             for (let i = 1; i <= daysInMonth; i++) {
@@ -199,13 +223,18 @@ const Dashboard: React.FC<DashboardProps> = ({ invoices, clients, products, comp
                     const d = new Date(inv.paymentDate || inv.date).getDate();
                     return d === i ? acc + inv.amount : acc;
                 }, 0);
-                data.push({ name: `${i}`, Revenu: amount });
+                const cnAmount = relevantCreditNotes.reduce((acc, cn) => {
+                    const d = new Date(cn.date).getDate();
+                    return d === i ? acc + cn.amount : acc;
+                }, 0);
+                data.push({ name: `${i}`, Revenu: Math.max(0, amount - cnAmount) });
             }
 
         } else if (chartPeriod === 'year') {
             const startOfYear = new Date(today.getFullYear(), 0, 1);
             const endOfYear = new Date(today.getFullYear(), 11, 31);
             const relevantInvoices = getPaidInvoices(startOfYear, endOfYear);
+            const relevantCreditNotes = getValidatedCreditNotes(startOfYear, endOfYear);
             
             const months = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
             data = months.map((month, index) => {
@@ -213,7 +242,11 @@ const Dashboard: React.FC<DashboardProps> = ({ invoices, clients, products, comp
                     const m = new Date(inv.paymentDate || inv.date).getMonth();
                     return m === index ? acc + inv.amount : acc;
                 }, 0);
-                return { name: month, Revenu: amount };
+                const cnAmount = relevantCreditNotes.reduce((acc, cn) => {
+                    const m = new Date(cn.date).getMonth();
+                    return m === index ? acc + cn.amount : acc;
+                }, 0);
+                return { name: month, Revenu: Math.max(0, amount - cnAmount) };
             });
         } else if (chartPeriod === 'custom') {
             const start = new Date(customStartDate);
@@ -222,6 +255,7 @@ const Dashboard: React.FC<DashboardProps> = ({ invoices, clients, products, comp
             end.setHours(23,59,59,999);
             
             const relevantInvoices = getPaidInvoices(start, end);
+            const relevantCreditNotes = getValidatedCreditNotes(start, end);
             
             for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
                 const dateStr = d.toLocaleDateString(language === 'ar' ? 'ar-MA' : 'fr-FR', { day: '2-digit', month: '2-digit' });
@@ -231,13 +265,17 @@ const Dashboard: React.FC<DashboardProps> = ({ invoices, clients, products, comp
                     const invDate = new Date(inv.paymentDate || inv.date).toISOString().split('T')[0];
                     return invDate === isoDate ? acc + inv.amount : acc;
                 }, 0);
+                const cnAmount = relevantCreditNotes.reduce((acc, cn) => {
+                    const cnDate = new Date(cn.date).toISOString().split('T')[0];
+                    return cnDate === isoDate ? acc + cn.amount : acc;
+                }, 0);
                 
-                data.push({ name: dateStr, fullDate: isoDate, Revenu: amount });
+                data.push({ name: dateStr, fullDate: isoDate, Revenu: Math.max(0, amount - cnAmount) });
             }
         }
 
         return data;
-    }, [invoices, chartPeriod, customStartDate, customEndDate, language]);
+    }, [invoices, creditNotes, chartPeriod, customStartDate, customEndDate, language]);
 
     const lowStockProducts = useMemo(() => {
         return products

@@ -3,14 +3,13 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import Header from './Header';
-import { Truck, FileText, Plus, Pencil, Download, Trash2, CheckCircle, AlertCircle, Clock, Loader2, FileCheck, MoreVertical, Printer, ChevronLeft, ChevronRight, Search, MessageSquare, Eye } from 'lucide-react';
+import { Truck, FileText, Plus, Pencil, Download, Trash2, CheckCircle, AlertCircle, Clock, Loader2, FileCheck, MoreVertical, Printer, ChevronLeft, ChevronRight, Search, Eye } from 'lucide-react';
 import { DeliveryNote, Invoice, Client, Product, CompanySettings } from '../types';
 import CreateDeliveryNoteModal from './CreateDeliveryNoteModal';
 import ConfirmationModal from './ConfirmationModal';
 import DeliveryNoteOptionModal from './DeliveryNoteOptionModal';
 import { generatePDF, printDocument } from '../services/pdfService';
 import { useLanguage } from '../contexts/LanguageContext';
-import { shareDocument } from '../services/shareService';
 import DocumentPreviewModal from './DocumentPreviewModal';
 
 interface DeliveryNotesProps {
@@ -640,19 +639,6 @@ const DeliveryNotes: React.FC<DeliveryNotesProps> = ({
                             {isDownloading ? <Loader2 size={16} className={`animate-spin ${isRTL ? 'ml-3' : 'mr-3'}`} /> : <Download size={16} className={`text-slate-500 group-hover:text-emerald-600 ${isRTL ? 'ml-3' : 'mr-3'}`} />} {t('download')}
                         </button>
                         
-                        <button 
-                            onClick={async () => {
-                                const client = clients.find(c => c.id === activeNote.clientId);
-                                setSelectedDocForPreview(activeNote);
-                                setSelectedRecipientForPreview(client);
-                                setIsPreviewModalOpen(true);
-                                setActiveMenuId(null);
-                            }}
-                            className="flex w-full items-center px-3 py-2 text-[13px] font-semibold text-slate-700 rounded-xl hover:bg-slate-50 hover:text-emerald-600 transition-colors group"
-                        >
-                            <MessageSquare size={16} className={`text-emerald-500 ${isRTL ? 'ml-3' : 'mr-3'}`} /> {t('sendWhatsApp')}
-                        </button>
-
                         <div className="border-t border-slate-100 my-1 mx-2"></div>
 
                         <button 

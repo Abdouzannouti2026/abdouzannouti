@@ -84,11 +84,42 @@ export const POS: React.FC<POSProps> = ({
 
   // State
   const [selectedClient, setSelectedClient] = useState<Client>(defaultCounterClient);
-  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [cartItems, setCartItems] = useState<CartItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('facturago_pos_active_cart');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [activeMobileView, setActiveMobileView] = useState<'catalog' | 'cart'>('catalog');
+  const [recentlyAddedToast, setRecentlyAddedToast] = useState<{ name: string; time: number } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [globalDiscountType, setGlobalDiscountType] = useState<'percentage' | 'fixed'>('percentage');
   const [globalDiscountValue, setGlobalDiscountValue] = useState<number>(0);
+
+  // Persist active cart items in localStorage
+  useEffect(() => {
+    try {
+      if (cartItems.length > 0) {
+        localStorage.setItem('facturago_pos_active_cart', JSON.stringify(cartItems));
+      } else {
+        localStorage.removeItem('facturago_pos_active_cart');
+      }
+    } catch (e) {
+      console.error("Could not persist active cart", e);
+    }
+  }, [cartItems]);
+
+  // Dismiss recently added toast after delay
+  useEffect(() => {
+    if (!recentlyAddedToast) return;
+    const timer = setTimeout(() => {
+      setRecentlyAddedToast(null);
+    }, 2200);
+    return () => clearTimeout(timer);
+  }, [recentlyAddedToast]);
 
   // Modals & UI States
   const [isScannerOpen, setIsScannerOpen] = useState(false);
@@ -369,6 +400,8 @@ export const POS: React.FC<POSProps> = ({
     const name = variant ? `${product.name} (${variant.name})` : product.name;
     const barcode = variant?.barcode || product.barcode || '';
     const cartItemId = variant ? `${product.id}-${variant.id}` : product.id;
+
+    setRecentlyAddedToast({ name, time: Date.now() });
 
     setCartItems(prev => {
       const existingIndex = prev.findIndex(item => item.id === cartItemId);
@@ -860,11 +893,67 @@ export const POS: React.FC<POSProps> = ({
         </div>
       </header>
 
+      {/* Mobile & Tablet Tab Selector (visible on mobile / tablet < lg) */}
+      <div className="lg:hidden bg-slate-900 px-3 py-2 border-b border-slate-800 flex items-center justify-between gap-2 shrink-0 z-20">
+        <div className="flex-1 grid grid-cols-2 p-1 bg-slate-800/90 rounded-xl border border-slate-700/60">
+          <button
+            type="button"
+            onClick={() => setActiveMobileView('catalog')}
+            className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
+              activeMobileView === 'catalog'
+                ? 'bg-emerald-600 text-white shadow-md'
+                : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
+            }`}
+          >
+            <Package size={15} />
+            <span>{language === 'ar' ? 'الكتالوج' : 'Catalogue'}</span>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-extrabold ${
+              activeMobileView === 'catalog' ? 'bg-emerald-800 text-emerald-100' : 'bg-slate-700 text-slate-300'
+            }`}>
+              {products.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveMobileView('cart')}
+            className={`relative flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
+              activeMobileView === 'cart'
+                ? 'bg-emerald-600 text-white shadow-md'
+                : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
+            }`}
+          >
+            <ShoppingCart size={15} />
+            <span>{language === 'ar' ? 'السلة' : 'Panier'}</span>
+            {cartItems.reduce((sum, item) => sum + item.quantity, 0) > 0 ? (
+              <span className="bg-amber-400 text-slate-950 font-black text-[11px] px-1.5 py-0.2 rounded-full shadow-sm animate-pulse">
+                {cartItems.reduce((sum, item) => sum + item.quantity, 0)}
+              </span>
+            ) : (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold bg-slate-700 text-slate-400">
+                0
+              </span>
+            )}
+          </button>
+        </div>
+      </div>
+
       {/* 2. MAIN POS WORKSPACE: 2-PANEL SPLIT (Catalog on Left / Cart on Right) */}
-      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
         
         {/* ================= LEFT PANEL: CATALOG & SEARCH ================= */}
-        <div className="flex-1 flex flex-col min-w-0 bg-slate-100 border-r border-slate-200 overflow-hidden">
+        <div className={`${activeMobileView === 'catalog' ? 'flex' : 'hidden'} lg:flex flex-1 flex-col min-w-0 bg-slate-100 border-r border-slate-200 overflow-hidden relative`}>
+          
+          {/* Quick feedback toast when item is added */}
+          {recentlyAddedToast && (
+            <div className="absolute top-3 right-3 z-30 bg-slate-900/95 text-white px-3.5 py-2 rounded-xl shadow-xl border border-emerald-500/50 flex items-center gap-2 text-xs font-bold backdrop-blur-sm pointer-events-none">
+              <div className="w-5 h-5 rounded-full bg-emerald-500 text-slate-950 flex items-center justify-center shrink-0">
+                <Check size={13} className="stroke-[3]" />
+              </div>
+              <span className="truncate max-w-[180px]">{recentlyAddedToast.name}</span>
+              <span className="text-emerald-400 font-normal">({cartItems.reduce((sum, item) => sum + item.quantity, 0)} {language === 'ar' ? 'في السلة' : 'au panier'})</span>
+            </div>
+          )}
           
           {/* Top Search & Actions Bar */}
           <div className="p-3 bg-white border-b border-slate-200 shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
@@ -1047,11 +1136,49 @@ export const POS: React.FC<POSProps> = ({
               </div>
             )}
           </div>
+
+          {/* Mobile/Tablet Bottom Quick Cart Bar (when browsing catalog with items in cart) */}
+          {cartItems.length > 0 && (
+            <div className="lg:hidden p-2.5 bg-slate-900 border-t border-slate-800 shadow-2xl flex items-center justify-between gap-3 shrink-0 z-20">
+              <button
+                type="button"
+                onClick={() => setActiveMobileView('cart')}
+                className="flex-1 flex items-center justify-between bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-bold text-xs shadow-lg transition-all"
+              >
+                <div className="flex items-center gap-2">
+                  <ShoppingCart size={16} />
+                  <span>{language === 'ar' ? 'عرض السلة' : 'Voir le panier'}</span>
+                  <span className="bg-emerald-800/90 px-2 py-0.5 rounded-full text-[11px] font-extrabold text-white">
+                    {cartItems.reduce((sum, item) => sum + item.quantity, 0)} {cartItems.reduce((sum, item) => sum + item.quantity, 0) > 1 ? 'articles' : 'article'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 font-black">
+                  <span>{finalTotalTTC.toLocaleString(language === 'ar' ? 'ar-MA' : 'fr-FR', { minimumFractionDigits: 2 })} {currency}</span>
+                  <ArrowRight size={14} />
+                </div>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* ================= RIGHT PANEL: CART & DIGITAL REGISTER ================= */}
-        <div className="w-full lg:w-[320px] xl:w-[345px] flex flex-col bg-white shadow-xl z-10 shrink-0 border-l border-slate-200">
+        <div className={`${activeMobileView === 'cart' ? 'flex' : 'hidden'} lg:flex w-full lg:w-[320px] xl:w-[345px] flex-col bg-white shadow-xl z-10 shrink-0 border-l border-slate-200`}>
           
+          {/* Mobile Return to Catalog Bar */}
+          <div className="lg:hidden px-3 py-2 bg-slate-800 text-white flex items-center justify-between border-b border-slate-700 shrink-0">
+            <button
+              type="button"
+              onClick={() => setActiveMobileView('catalog')}
+              className="flex items-center gap-1.5 text-xs font-bold text-emerald-400 hover:text-emerald-300 transition-colors"
+            >
+              <ArrowLeft size={16} />
+              <span>{language === 'ar' ? 'الرجوع إلى الكتالوج' : '← Continuer les achats / Catalogue'}</span>
+            </button>
+            <span className="text-[11px] text-slate-300 font-medium">
+              {cartItems.reduce((sum, item) => sum + item.quantity, 0)} {cartItems.reduce((sum, item) => sum + item.quantity, 0) > 1 ? 'articles' : 'article'}
+            </span>
+          </div>
+
           {/* Cart Header: Client Picker & Cart Clear */}
           <div className="p-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-1.5">
             
@@ -1198,9 +1325,17 @@ export const POS: React.FC<POSProps> = ({
                   <ShoppingCart size={24} className="opacity-40" />
                 </div>
                 <p className="font-bold text-sm text-slate-600">{t('emptyCart') || 'Le panier est vide'}</p>
-                <p className="text-xs text-slate-400 mt-1 text-center max-w-[200px]">
+                <p className="text-xs text-slate-400 mt-1 text-center max-w-[220px]">
                   Scannez un article ou cliquez sur les produits du catalogue pour commencer.
                 </p>
+                <button
+                  type="button"
+                  onClick={() => setActiveMobileView('catalog')}
+                  className="lg:hidden mt-4 inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all"
+                >
+                  <Package size={14} />
+                  <span>{language === 'ar' ? 'تصفح الكتالوج والمنتجات' : 'Voir le catalogue des produits'}</span>
+                </button>
               </div>
             )}
           </div>

@@ -95,6 +95,7 @@ export interface LineItem {
   name: string;
   description: string;
   quantity: number;
+  invoiceQuantity?: number; // Original invoiced quantity when creating credit notes
   unit?: string;
   length?: number;
   height?: number;
@@ -215,6 +216,7 @@ export interface CreditNote {
     discountType?: 'percentage' | 'fixed';
     discountValue?: number;
     notes?: string;
+    returnToStock?: boolean; // When true, returned items are reintegrated into product stock
 }
 
 export interface Payment {
@@ -278,7 +280,7 @@ export interface DeliveryNote {
 }
 
 export interface DocumentColumn {
-    id: 'reference' | 'name' | 'quantity' | 'unit' | 'unitPrice' | 'vat' | 'total' | 'length' | 'height' | 'm2' | 'ml' | 'weight' | 'totalWeight' | 'days';
+    id: 'reference' | 'name' | 'quantity' | 'unit' | 'unitPrice' | 'vat' | 'total' | 'length' | 'height' | 'm2' | 'ml' | 'weight' | 'totalWeight' | 'days' | 'avoir';
     label: string;
     visible: boolean;
     order: number;

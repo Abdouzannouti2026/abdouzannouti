@@ -214,6 +214,12 @@ const Statistics: React.FC<StatisticsProps> = ({ invoices, payments, purchaseOrd
             chartDataMap.get(p.date)!.revenue += p.amount;
         });
 
+        // Deduct validated credit notes from revenue on their issue date
+        creditNotes.filter(cn => (cn.status === CreditNoteStatus.Validated || cn.status === CreditNoteStatus.Refunded) && isInRange(cn.date, start, end)).forEach(cn => {
+            if (!chartDataMap.has(cn.date)) chartDataMap.set(cn.date, { date: cn.date, revenue: 0, expense: 0, profit: 0 });
+            chartDataMap.get(cn.date)!.revenue -= cn.amount;
+        });
+
         expenses.filter(e => isInRange(e.date, start, end)).forEach(e => {
             if (!chartDataMap.has(e.date)) chartDataMap.set(e.date, { date: e.date, revenue: 0, expense: 0, profit: 0 });
             chartDataMap.get(e.date)!.expense += e.amount;

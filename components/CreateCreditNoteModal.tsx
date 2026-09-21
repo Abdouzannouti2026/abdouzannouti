@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Plus, Trash2, ScanLine, Calculator, FileText, Loader2, AlertCircle, Package, Square, Ruler, Weight, Hash, Tag, Coins, Layers } from 'lucide-react';
-import { Client, Product, CreditNote, LineItem, CreditNoteStatus, CompanySettings } from '../types';
+import { X, Plus, Trash2, ScanLine, Calculator, FileText, Loader2, AlertCircle, Package, Square, Ruler, Weight, Hash, Tag, Coins, Layers, RotateCcw } from 'lucide-react';
+import { Client, Product, CreditNote, LineItem, CreditNoteStatus, CompanySettings, Invoice } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { parseDecimalInput, formatDecimalForInput, roundPrice } from '../services/currencyService';
 import SearchableProductSelect from './SearchableProductSelect';
@@ -13,12 +13,25 @@ interface CreateCreditNoteModalProps {
     onSave: (creditNote: any, id?: string) => Promise<any> | void;
     clients: Client[];
     products: Product[];
+    invoices?: Invoice[];
+    prefilledInvoice?: Invoice | null;
     creditNoteToEdit?: CreditNote | null;
     companySettings?: CompanySettings | null;
     generateDocumentId?: () => string;
 }
 
-const CreateCreditNoteModal: React.FC<CreateCreditNoteModalProps> = ({ isOpen, onClose, onSave, clients, products, creditNoteToEdit, companySettings, generateDocumentId }) => {
+const CreateCreditNoteModal: React.FC<CreateCreditNoteModalProps> = ({ 
+    isOpen, 
+    onClose, 
+    onSave, 
+    clients, 
+    products, 
+    invoices = [],
+    prefilledInvoice,
+    creditNoteToEdit, 
+    companySettings, 
+    generateDocumentId 
+}) => {
     const { t, isRTL, language } = useLanguage();
     const [isVisible, setIsVisible] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -28,6 +41,7 @@ const CreateCreditNoteModal: React.FC<CreateCreditNoteModalProps> = ({ isOpen, o
     const qtyColLabel = companySettings?.documentColumns?.find(c => c.id === 'quantity')?.label || t('quantity');
     const vatOptions = language === 'es' ? [21, 10, 4, 0] : [20, 14, 10, 7, 0];
 
+    const [selectedInvoiceId, setSelectedInvoiceId] = useState('');
     const [clientId, setClientId] = useState('');
     const [documentId, setDocumentId] = useState('');
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -59,6 +73,9 @@ const CreateCreditNoteModal: React.FC<CreateCreditNoteModalProps> = ({ isOpen, o
     const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>('percentage');
     const [discountValue, setDiscountValue] = useState<string>('');
 
+    const [status, setStatus] = useState<CreditNoteStatus>(CreditNoteStatus.Validated);
+    const [returnToStock, setReturnToStock] = useState<boolean>(true);
+
     const stripHtml = (html?: string) => {
         if (!html) return '';
         const tempDiv = document.createElement("div");
@@ -66,11 +83,38 @@ const CreateCreditNoteModal: React.FC<CreateCreditNoteModalProps> = ({ isOpen, o
         return (tempDiv.textContent || tempDiv.innerText || "").replace(/\u00a0/g, " ").trim();
     };
 
+    const loadInvoiceData = (inv: Invoice) => {
+        setSelectedInvoiceId(inv.id);
+        setClientId(inv.clientId);
+        const invRef = inv.documentId || inv.id;
+        setReason(`Avoir sur facture ${invRef}`);
+        setShowSubjectField(true);
+        setPaymentMethod(inv.paymentMethod || '');
+        setShowPaymentMethodField(!!inv.paymentMethod);
+        setCheckNumber(inv.checkNumber || '');
+        setBankName(inv.bankName || '');
+        setNotes(`Avoir suite au retour d'articles de la facture ${invRef}.`);
+        
+        const mode = inv.lineItems[0]?.calculationMode || 'piece';
+        setCalculationMode(mode);
+
+        const items: LineItem[] = inv.lineItems.map(item => ({
+            ...item,
+            id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            invoiceQuantity: item.quantity,
+            quantity: 0,
+            name: stripHtml(item.name),
+            description: stripHtml(item.description)
+        }));
+        setLineItems(items);
+    };
+
     useEffect(() => {
         if (isOpen) {
             setTimeout(() => setIsVisible(true), 10);
             setError(null);
             if (creditNoteToEdit) {
+                setSelectedInvoiceId(creditNoteToEdit.invoiceId || '');
                 setClientId(creditNoteToEdit.clientId);
                 setDocumentId(creditNoteToEdit.documentId || '');
                 setDate(creditNoteToEdit.date);
@@ -86,7 +130,6 @@ const CreateCreditNoteModal: React.FC<CreateCreditNoteModalProps> = ({ isOpen, o
                 setBankName(creditNoteToEdit.bankName || '');
 
                 setNotes(creditNoteToEdit.notes || '');
-                // Read calculationMode from first line item
                 setCalculationMode(creditNoteToEdit.lineItems[0]?.calculationMode || 'piece');
                 
                 const loadedItems = JSON.parse(JSON.stringify(creditNoteToEdit.lineItems));
@@ -99,7 +142,19 @@ const CreateCreditNoteModal: React.FC<CreateCreditNoteModalProps> = ({ isOpen, o
                 setIsDiscountEnabled(!!creditNoteToEdit.discountValue && creditNoteToEdit.discountValue > 0);
                 setDiscountType(creditNoteToEdit.discountType || 'percentage');
                 setDiscountValue(creditNoteToEdit.discountValue ? formatDecimalForInput(creditNoteToEdit.discountValue, language) : '');
+                setStatus(creditNoteToEdit.status || CreditNoteStatus.Validated);
+                setReturnToStock(creditNoteToEdit.returnToStock !== false);
+            } else if (prefilledInvoice) {
+                setDocumentId(generateDocumentId ? generateDocumentId() : '');
+                setDate(new Date().toISOString().split('T')[0]);
+                setIsDiscountEnabled(false);
+                setDiscountType('percentage');
+                setDiscountValue('0');
+                setStatus(CreditNoteStatus.Validated);
+                setReturnToStock(true);
+                loadInvoiceData(prefilledInvoice);
             } else {
+                setSelectedInvoiceId('');
                 setClientId('');
                 setDocumentId(generateDocumentId ? generateDocumentId() : '');
                 setDate(new Date().toISOString().split('T')[0]);
@@ -115,12 +170,14 @@ const CreateCreditNoteModal: React.FC<CreateCreditNoteModalProps> = ({ isOpen, o
                 setIsDiscountEnabled(false);
                 setDiscountType('percentage');
                 setDiscountValue('0');
+                setStatus(CreditNoteStatus.Validated);
+                setReturnToStock(true);
             }
             resetItemForm();
         } else {
             setIsVisible(false);
         }
-    }, [isOpen, creditNoteToEdit, language]);
+    }, [isOpen, creditNoteToEdit, prefilledInvoice, language]);
 
     const resetItemForm = () => {
         setSelectedProductId('');
@@ -246,13 +303,34 @@ const CreateCreditNoteModal: React.FC<CreateCreditNoteModalProps> = ({ isOpen, o
         return { subTotal, vatAmount: vatAmountAfterDiscount, totalTTC, discountAmount };
     }, [lineItems, isDiscountEnabled, discountType, discountValue, language, calculationMode]);
 
+    const hasInvoiceItems = lineItems.some(i => i.invoiceQuantity !== undefined);
+
     const handleSave = async () => {
-        if (!clientId || lineItems.length === 0) return;
+        if (!clientId) {
+            setError(language === 'ar' ? 'يرجى تحديد الزبون.' : 'Veuillez sélectionner un client.');
+            return;
+        }
+        if (lineItems.length === 0) {
+            setError(language === 'ar' ? 'يرجى إضافة سلع للأفوار.' : 'Veuillez ajouter des articles.');
+            return;
+        }
+
+        const activeItems = hasInvoiceItems
+            ? lineItems.filter(item => (Number(item.quantity) || 0) > 0)
+            : lineItems;
+
+        if (activeItems.length === 0) {
+            setError(language === 'ar' 
+                ? 'يرجى إدخال كمية الإرجاع (أكبر من 0) لسلعة واحدة على الأقل في عمود الإرجاع (Qté Avoir).' 
+                : 'Veuillez saisir une quantité retournée (> 0) dans la colonne "Qté Avoir".');
+            return;
+        }
+
         const client = clients.find(c => c.id === clientId);
         const clientNameDisplay = client ? (client.company || client.name) : (language === 'es' ? 'Cliente desconocido' : 'Client inconnu');
 
         // Store metadata in the first line item to avoid schema changes
-        const updatedLineItems = [...lineItems];
+        const updatedLineItems = [...activeItems];
         if (updatedLineItems.length > 0) {
             updatedLineItems[0] = { 
                 ...updatedLineItems[0], 
@@ -265,17 +343,25 @@ const CreateCreditNoteModal: React.FC<CreateCreditNoteModalProps> = ({ isOpen, o
             };
         }
 
+        const resolvedInvoiceId = selectedInvoiceId || creditNoteToEdit?.invoiceId || (prefilledInvoice?.documentId || prefilledInvoice?.id) || undefined;
+
         const creditNoteData: any = {
             documentId: documentId || undefined,
-            clientId, clientName: clientNameDisplay, date, 
+            clientId, 
+            clientName: clientNameDisplay, 
+            date, 
             subject: showSubjectField ? reason : undefined, 
             paymentMethod: showPaymentMethodField ? paymentMethod : undefined, 
             checkNumber: (showPaymentMethodField && paymentMethod === 'Chèque') ? checkNumber : undefined,
             bankName: (showPaymentMethodField && paymentMethod === 'Chèque') ? bankName : undefined,
             notes, 
             lineItems: updatedLineItems,
-            status: creditNoteToEdit ? creditNoteToEdit.status : CreditNoteStatus.Draft,
-            subTotal: totals.subTotal, vatAmount: totals.vatAmount, amount: totals.totalTTC, invoiceId: creditNoteToEdit?.invoiceId,
+            status,
+            returnToStock,
+            subTotal: totals.subTotal, 
+            vatAmount: totals.vatAmount, 
+            amount: totals.totalTTC, 
+            invoiceId: resolvedInvoiceId,
             discountType: isDiscountEnabled ? discountType : undefined,
             discountValue: isDiscountEnabled ? parseDecimalInput(discountValue) : undefined,
         };
@@ -321,7 +407,7 @@ const CreateCreditNoteModal: React.FC<CreateCreditNoteModalProps> = ({ isOpen, o
                 {error && (<div className="px-6 pt-4"><div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-md flex items-start gap-3"><AlertCircle className="h-5 w-5 text-red-500 shrink-0" /><p className="text-xs text-red-700">{error}</p></div></div>)}
 
                 <div className="px-3 md:px-6 py-5 overflow-y-auto custom-scrollbar flex-1 space-y-6 pb-24 md:pb-8">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                         <div className="space-y-1">
                             <label className="block text-sm font-bold text-slate-700 ml-1">{language === 'es' ? 'Nº de Avoir' : 'N° Avoir'} *</label>
                             <input 
@@ -335,15 +421,59 @@ const CreateCreditNoteModal: React.FC<CreateCreditNoteModalProps> = ({ isOpen, o
                         </div>
                         <div className="space-y-1">
                             <label className="block text-sm font-bold text-slate-700 ml-1">{t('client')} *</label>
-                            <select value={clientId} onChange={(e) => setClientId(e.target.value)} disabled={!!creditNoteToEdit?.invoiceId} className="block w-full rounded-xl border-slate-200 bg-slate-50 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm h-12 bg-white disabled:bg-gray-100">
+                            <select 
+                                value={clientId} 
+                                onChange={(e) => {
+                                    setClientId(e.target.value);
+                                    if (selectedInvoiceId) {
+                                        const inv = invoices.find(i => i.id === selectedInvoiceId);
+                                        if (inv && inv.clientId !== e.target.value) {
+                                            setSelectedInvoiceId('');
+                                        }
+                                    }
+                                }} 
+                                disabled={!!creditNoteToEdit?.invoiceId} 
+                                className="block w-full rounded-xl border-slate-200 bg-slate-50 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm h-12 bg-white disabled:bg-gray-100"
+                            >
                                 <option value="">-- {t('select')} --</option>
                                 {clients.map(client => (<option key={client.id} value={client.id}>{client.company || client.name}</option>))}
+                            </select>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="block text-sm font-bold text-slate-700 ml-1">
+                                {language === 'ar' ? 'الفاتورة الأصلية' : 'Facture d\'origine'}
+                            </label>
+                            <select 
+                                value={selectedInvoiceId} 
+                                onChange={(e) => {
+                                    const invId = e.target.value;
+                                    setSelectedInvoiceId(invId);
+                                    if (invId) {
+                                        const inv = invoices.find(i => i.id === invId);
+                                        if (inv) loadInvoiceData(inv);
+                                    }
+                                }}
+                                disabled={!!creditNoteToEdit?.invoiceId}
+                                className="block w-full rounded-xl border-slate-200 bg-slate-50 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm h-12 bg-white disabled:bg-gray-100"
+                            >
+                                <option value="">-- {language === 'ar' ? 'بدون ربط بفاتورة' : 'Aucune (Avoir libre)'} --</option>
+                                {invoices
+                                    .filter(inv => !clientId || inv.clientId === clientId)
+                                    .map(inv => (
+                                        <option key={inv.id} value={inv.id}>
+                                            {inv.documentId || inv.id} ({inv.clientName} - {inv.amount} MAD)
+                                        </option>
+                                    ))
+                                }
                             </select>
                         </div>
                         <div className="space-y-1">
                             <label className="block text-sm font-bold text-slate-700 ml-1">{t('date')} *</label>
                             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="block w-full rounded-xl border-slate-200 bg-slate-50 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm h-12"/>
                         </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         
                         {showSubjectField ? (
                             <div className="space-y-1">
@@ -429,7 +559,62 @@ const CreateCreditNoteModal: React.FC<CreateCreditNoteModalProps> = ({ isOpen, o
                         )}
 
 
-                        <div className="sm:col-span-3 space-y-2">
+                        {/* Statut & Réintégration en Stock */}
+                        <div className="sm:col-span-2 p-4 bg-emerald-50/70 rounded-2xl border border-emerald-100/90 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-emerald-200">
+                                    <RotateCcw className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm font-bold text-slate-800">
+                                            {language === 'ar' ? 'إرجاع السلع إلى المخزون (Retour Marchandise)' : 'Retour de Marchandise & Stock'}
+                                        </span>
+                                        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                            {language === 'ar' ? 'تلقائي' : 'Automatique'}
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-slate-600 mt-0.5">
+                                        {language === 'ar' 
+                                            ? 'السلع المرجعة ستضاف للمخزون فوراً، وسيتم خصم المبلغ من رقم المعاملات (Chiffre d\'affaires).' 
+                                            : 'Les quantités retournées seront réintégrées au stock et le montant sera déduit du Chiffre d\'Affaires.'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-4 shrink-0">
+                                <label className="flex items-center gap-2 cursor-pointer select-none bg-white px-3 py-2 rounded-xl border border-slate-200 hover:border-emerald-300 transition-colors">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={returnToStock} 
+                                        onChange={(e) => setReturnToStock(e.target.checked)}
+                                        className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300"
+                                    />
+                                    <span className="text-xs font-bold text-slate-700">
+                                        {language === 'ar' ? 'إعادة للمخزون (+Stock)' : 'Réintégrer au stock (+)'}
+                                    </span>
+                                </label>
+
+                                <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200">
+                                    <button
+                                        type="button"
+                                        onClick={() => setStatus(CreditNoteStatus.Validated)}
+                                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${status === CreditNoteStatus.Validated ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                                    >
+                                        {t('statusValidated') || 'Validé'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setStatus(CreditNoteStatus.Draft)}
+                                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${status === CreditNoteStatus.Draft ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+                                    >
+                                        {t('statusManual') || 'Brouillon'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="sm:col-span-2 space-y-2">
                             <label className="block text-sm font-bold text-slate-700 ml-1">Mode de calcul</label>
                             <div className="flex flex-wrap gap-2 p-1 bg-slate-100 rounded-2xl border border-slate-200 w-fit">
                                 {[
@@ -607,6 +792,48 @@ const CreateCreditNoteModal: React.FC<CreateCreditNoteModalProps> = ({ isOpen, o
 
                     {lineItems.length > 0 ? (
                         <>
+                            {hasInvoiceItems && (
+                                <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-emerald-50/80 border border-emerald-200 rounded-2xl">
+                                    <div className="flex items-center gap-2.5">
+                                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
+                                        <div className="text-xs text-emerald-950">
+                                            <span className="font-bold">
+                                                {language === 'ar' ? 'إرجاع سلع الفاتورة: ' : 'Retour d\'articles de la facture : '}
+                                            </span>
+                                            {language === 'ar' 
+                                                ? 'حدد الكمية التي أرجعها الزبون في خانة (Qté Avoir). سيتم احتساب المبلغ تلقائياً وإعادة السلع للمخزون وخفض رقم المعاملات.'
+                                                : 'Saisissez les quantités retournées dans la colonne "Qté Avoir". Les montants, le stock et le CA s\'ajusteront automatiquement.'}
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setLineItems(prev => prev.map(item => ({
+                                                    ...item,
+                                                    quantity: item.invoiceQuantity !== undefined ? item.invoiceQuantity : item.quantity
+                                                })));
+                                            }}
+                                            className="px-3 py-1.5 text-xs font-bold text-emerald-800 bg-white hover:bg-emerald-100 rounded-xl border border-emerald-300 shadow-2xs transition-all"
+                                        >
+                                            {language === 'ar' ? 'إرجاع كل السلع' : 'Tout retourner'}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setLineItems(prev => prev.map(item => ({
+                                                    ...item,
+                                                    quantity: 0
+                                                })));
+                                            }}
+                                            className="px-3 py-1.5 text-xs font-bold text-slate-600 bg-white hover:bg-slate-100 rounded-xl border border-slate-200 shadow-2xs transition-all"
+                                        >
+                                            {language === 'ar' ? 'تصفير (0)' : 'Vider (0)'}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Desktop Table View */}
                             <div className="hidden md:block border border-slate-200 rounded-2xl overflow-hidden shadow-sm overflow-x-auto">
                                 <table className="min-w-full divide-y divide-slate-200">
@@ -614,8 +841,20 @@ const CreateCreditNoteModal: React.FC<CreateCreditNoteModalProps> = ({ isOpen, o
                                         <tr>
                                             <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase">{t('refLabel')}</th>
                                             <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase">{t('description')}</th>
-                                            <th className="px-4 py-3 text-center text-[10px] font-bold text-slate-500 uppercase">{qtyColLabel}</th>
-                                            <th className="px-4 py-3 text-center text-[10px] font-bold text-slate-500 uppercase w-28">{t('unit')}</th>
+                                            {hasInvoiceItems ? (
+                                                <>
+                                                    <th className="px-3 py-3 text-center text-[10px] font-bold text-slate-500 uppercase">
+                                                        {language === 'ar' ? 'الكمية المفوترة' : 'Qté Facturée'}
+                                                    </th>
+                                                    <th className="px-3 py-3 text-center text-[10px] font-bold text-emerald-800 uppercase bg-emerald-50/80 border-x border-emerald-200">
+                                                        {language === 'ar' ? 'الكمية المرجعة (أفوار)' : 'Qté Avoir (Retour)'}
+                                                    </th>
+                                                </>
+                                            ) : (
+                                                <th className="px-4 py-3 text-center text-[10px] font-bold text-slate-500 uppercase">{qtyColLabel}</th>
+                                            )}
+                                            <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-500 uppercase">{t('puHTLabel')}</th>
+                                            <th className="px-4 py-3 text-center text-[10px] font-bold text-slate-500 uppercase w-24">{t('unit')}</th>
                                             {showLengthColumn && <th className="px-4 py-3 text-center text-[10px] font-bold text-slate-500 uppercase">{calculationMode === 'm2' ? 'Larg.' : 'Long.'}</th>}
                                             {showHeightColumn && <th className="px-4 py-3 text-center text-[10px] font-bold text-slate-500 uppercase">Haut.</th>}
                                             {isKg && <th className="px-4 py-3 text-center text-[10px] font-bold text-slate-500 uppercase">Poids (kg)</th>}
@@ -651,12 +890,55 @@ const CreateCreditNoteModal: React.FC<CreateCreditNoteModalProps> = ({ isOpen, o
                                                         }}
                                                     />
                                                 </td>
-                                                <td className="px-4 py-3 text-center text-xs text-slate-600 font-bold">
+                                                {hasInvoiceItems ? (
+                                                    <>
+                                                        <td className="px-3 py-3 text-center text-xs font-bold text-slate-600 bg-slate-50/50">
+                                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-200 text-slate-700">
+                                                                {item.invoiceQuantity !== undefined ? item.invoiceQuantity : '-'}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-3 py-3 text-center text-xs font-bold bg-emerald-50/40 border-x border-emerald-100">
+                                                            <div className="flex items-center justify-center gap-1.5">
+                                                                <input 
+                                                                    type="text" 
+                                                                    value={formatDecimalForInput(item.quantity, language)} 
+                                                                    onChange={(e) => {
+                                                                        const val = parseDecimalInput(e.target.value);
+                                                                        const max = item.invoiceQuantity !== undefined ? item.invoiceQuantity : Infinity;
+                                                                        updateLineItem(item.id, { quantity: Math.min(Math.max(0, val), max) });
+                                                                    }}
+                                                                    placeholder="0"
+                                                                    className="w-16 p-1.5 text-center rounded-lg border border-emerald-300 focus:ring-2 focus:ring-emerald-500 text-xs font-bold text-emerald-950 bg-white shadow-2xs"
+                                                                />
+                                                                {item.invoiceQuantity !== undefined && (
+                                                                    <button
+                                                                        type="button"
+                                                                        title={language === 'ar' ? 'إرجاع الكمية كاملة' : 'Tout retourner'}
+                                                                        onClick={() => updateLineItem(item.id, { quantity: item.invoiceQuantity! })}
+                                                                        className="text-[10px] font-bold px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded transition-colors"
+                                                                    >
+                                                                        Max
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                    </>
+                                                ) : (
+                                                    <td className="px-4 py-3 text-center text-xs text-slate-600 font-bold">
+                                                        <input 
+                                                            type="text" 
+                                                            value={formatDecimalForInput(item.quantity, language)} 
+                                                            onChange={(e) => updateLineItem(item.id, { quantity: parseDecimalInput(e.target.value) })}
+                                                            className="w-16 p-1 text-center border-none focus:ring-0 text-xs font-bold bg-transparent"
+                                                        />
+                                                    </td>
+                                                )}
+                                                <td className="px-4 py-3 text-right text-xs text-slate-700 font-bold">
                                                     <input 
                                                         type="text" 
-                                                        value={formatDecimalForInput(item.quantity, language)} 
-                                                        onChange={(e) => updateLineItem(item.id, { quantity: parseDecimalInput(e.target.value) })}
-                                                        className="w-16 p-1 text-center border-none focus:ring-0 text-xs font-bold bg-transparent"
+                                                        value={formatDecimalForInput(item.unitPrice, language)} 
+                                                        onChange={(e) => updateLineItem(item.id, { unitPrice: parseDecimalInput(e.target.value) })}
+                                                        className="w-20 p-1 text-right border-none focus:ring-0 text-xs font-bold bg-transparent"
                                                     />
                                                 </td>
                                                 <td className="px-4 py-3 text-center text-xs text-slate-600">
@@ -665,51 +947,51 @@ const CreateCreditNoteModal: React.FC<CreateCreditNoteModalProps> = ({ isOpen, o
                                                         value={item.unit || ''} 
                                                         onChange={(e) => updateLineItem(item.id, { unit: e.target.value })}
                                                         placeholder={t('unit')}
-                                                        className="w-24 p-1 text-center border-none focus:ring-0 text-xs bg-transparent"
+                                                        className="w-20 p-1 text-center border-none focus:ring-0 text-xs bg-transparent"
                                                     />
                                                 </td>
-                                            {showLengthColumn && (
-                                                <td className="px-4 py-3 text-center text-xs text-slate-600 font-bold">
-                                                    <input 
-                                                        type="text" 
-                                                        value={formatDecimalForInput(item.length || 1, language)} 
-                                                        onChange={(e) => updateLineItem(item.id, { length: parseDecimalInput(e.target.value) })}
-                                                        className="w-12 p-1 text-center border-none focus:ring-0 text-xs font-bold bg-transparent"
-                                                    />
-                                                </td>
-                                            )}
-                                            {showHeightColumn && (
-                                                <td className="px-4 py-3 text-center text-xs text-slate-600 font-bold">
-                                                    <input 
-                                                        type="text" 
-                                                        value={formatDecimalForInput(item.height || 1, language)} 
-                                                        onChange={(e) => updateLineItem(item.id, { height: parseDecimalInput(e.target.value) })}
-                                                        className="w-12 p-1 text-center border-none focus:ring-0 text-xs font-bold bg-transparent"
-                                                    />
-                                                </td>
-                                            )}
-                                            {isKg && (
-                                                <td className="px-4 py-3 text-center text-xs text-slate-600 font-bold">
-                                                    <input 
-                                                        type="text" 
-                                                        value={formatDecimalForInput(item.weight || 1, language)} 
-                                                        onChange={(e) => updateLineItem(item.id, { weight: parseDecimalInput(e.target.value) })}
-                                                        className="w-12 p-1 text-center border-none focus:ring-0 text-xs font-bold bg-transparent"
-                                                    />
-                                                </td>
-                                            )}
-                                            {isM2 && <td className="px-4 py-3 text-center text-xs font-medium text-slate-700">{(item.quantity * (item.length || 1) * (item.height || 1)).toLocaleString('fr-MA', { maximumFractionDigits: 2 })}</td>}
-                                            {isML && <td className="px-4 py-3 text-center text-xs font-medium text-slate-700">{(item.quantity * (item.length || 1)).toLocaleString('fr-MA', { maximumFractionDigits: 2 })}</td>}
-                                            {isDays && (
-                                                <td className="px-4 py-3 text-center text-xs text-slate-600 font-bold">
-                                                    <input 
-                                                        type="text" 
-                                                        value={formatDecimalForInput(item.days || 1, language)} 
-                                                        onChange={(e) => updateLineItem(item.id, { days: parseDecimalInput(e.target.value) })}
-                                                        className="w-12 p-1 text-center border-none focus:ring-0 text-xs font-bold bg-transparent font-mono"
-                                                    />
-                                                </td>
-                                            )}
+                                                {showLengthColumn && (
+                                                    <td className="px-4 py-3 text-center text-xs text-slate-600 font-bold">
+                                                        <input 
+                                                            type="text" 
+                                                            value={formatDecimalForInput(item.length || 1, language)} 
+                                                            onChange={(e) => updateLineItem(item.id, { length: parseDecimalInput(e.target.value) })}
+                                                            className="w-12 p-1 text-center border-none focus:ring-0 text-xs font-bold bg-transparent"
+                                                        />
+                                                    </td>
+                                                )}
+                                                {showHeightColumn && (
+                                                    <td className="px-4 py-3 text-center text-xs text-slate-600 font-bold">
+                                                        <input 
+                                                            type="text" 
+                                                            value={formatDecimalForInput(item.height || 1, language)} 
+                                                            onChange={(e) => updateLineItem(item.id, { height: parseDecimalInput(e.target.value) })}
+                                                            className="w-12 p-1 text-center border-none focus:ring-0 text-xs font-bold bg-transparent"
+                                                        />
+                                                    </td>
+                                                )}
+                                                {isKg && (
+                                                    <td className="px-4 py-3 text-center text-xs text-slate-600 font-bold">
+                                                        <input 
+                                                            type="text" 
+                                                            value={formatDecimalForInput(item.weight || 1, language)} 
+                                                            onChange={(e) => updateLineItem(item.id, { weight: parseDecimalInput(e.target.value) })}
+                                                            className="w-12 p-1 text-center border-none focus:ring-0 text-xs font-bold bg-transparent"
+                                                        />
+                                                    </td>
+                                                )}
+                                                {isM2 && <td className="px-4 py-3 text-center text-xs font-medium text-slate-700">{(item.quantity * (item.length || 1) * (item.height || 1)).toLocaleString('fr-MA', { maximumFractionDigits: 2 })}</td>}
+                                                {isML && <td className="px-4 py-3 text-center text-xs font-medium text-slate-700">{(item.quantity * (item.length || 1)).toLocaleString('fr-MA', { maximumFractionDigits: 2 })}</td>}
+                                                {isDays && (
+                                                    <td className="px-4 py-3 text-center text-xs text-slate-600 font-bold">
+                                                        <input 
+                                                            type="text" 
+                                                            value={formatDecimalForInput(item.days || 1, language)} 
+                                                            onChange={(e) => updateLineItem(item.id, { days: parseDecimalInput(e.target.value) })}
+                                                            className="w-12 p-1 text-center border-none focus:ring-0 text-xs font-bold bg-transparent font-mono"
+                                                        />
+                                                    </td>
+                                                )}
                                                 <td className="px-4 py-3 text-right text-xs font-bold text-slate-900">{(item.quantity * getLineMultiplier(item) * item.unitPrice).toLocaleString(language === 'ar' ? 'ar-MA' : 'fr-FR', { minimumFractionDigits: 2 })}</td>
                                                 <td className="px-4 py-3 text-center"><button onClick={() => handleRemoveItem(item.id)} className="text-slate-300 hover:text-red-500 transition-colors p-1"><Trash2 size={16}/></button></td>
                                             </tr>
@@ -757,7 +1039,41 @@ const CreateCreditNoteModal: React.FC<CreateCreditNoteModalProps> = ({ isOpen, o
                                                 </button>
                                             </div>
 
-                                            <div className="grid grid-cols-2 gap-4">
+                                            {hasInvoiceItems ? (
+                                                <div className="grid grid-cols-2 gap-3 bg-emerald-50/50 p-2.5 rounded-xl border border-emerald-200/60">
+                                                    <div className="space-y-1">
+                                                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{language === 'ar' ? 'الكمية المفوترة' : 'Qté Facturée'}</label>
+                                                        <div className="h-10 flex items-center justify-center font-bold text-slate-700 bg-slate-100 rounded-lg text-sm">
+                                                            {item.invoiceQuantity !== undefined ? item.invoiceQuantity : '-'}
+                                                        </div>
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <label className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider">{language === 'ar' ? 'الكمية المرجعة' : 'Qté Avoir'}</label>
+                                                        <div className="flex items-center gap-1">
+                                                            <input 
+                                                                type="text" 
+                                                                value={formatDecimalForInput(item.quantity, language)} 
+                                                                onChange={(e) => {
+                                                                    const val = parseDecimalInput(e.target.value);
+                                                                    const max = item.invoiceQuantity !== undefined ? item.invoiceQuantity : Infinity;
+                                                                    updateLineItem(item.id, { quantity: Math.min(Math.max(0, val), max) });
+                                                                }}
+                                                                placeholder="0"
+                                                                className="w-full h-10 rounded-lg border-emerald-300 bg-white text-sm font-bold px-2 text-center text-emerald-950 focus:ring-emerald-500"
+                                                            />
+                                                            {item.invoiceQuantity !== undefined && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => updateLineItem(item.id, { quantity: item.invoiceQuantity! })}
+                                                                    className="h-10 px-2 text-xs font-bold bg-emerald-100 text-emerald-800 rounded-lg hover:bg-emerald-200 transition-colors"
+                                                                >
+                                                                    Max
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ) : (
                                                 <div className="space-y-1">
                                                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('quantity')}</label>
                                                     <input 
@@ -767,15 +1083,16 @@ const CreateCreditNoteModal: React.FC<CreateCreditNoteModalProps> = ({ isOpen, o
                                                         className="w-full h-10 rounded-lg border-slate-200 bg-white text-sm font-bold px-3"
                                                     />
                                                 </div>
-                                                <div className="space-y-1">
-                                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('puHTLabel')}</label>
-                                                    <input 
-                                                        type="text" 
-                                                        value={formatDecimalForInput(item.unitPrice, language)} 
-                                                        onChange={(e) => updateLineItem(item.id, { unitPrice: parseDecimalInput(e.target.value) })}
-                                                        className="w-full h-10 rounded-lg border-slate-200 bg-white text-sm font-bold px-3"
-                                                    />
-                                                </div>
+                                            )}
+
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('puHTLabel')}</label>
+                                                <input 
+                                                    type="text" 
+                                                    value={formatDecimalForInput(item.unitPrice, language)} 
+                                                    onChange={(e) => updateLineItem(item.id, { unitPrice: parseDecimalInput(e.target.value) })}
+                                                    className="w-full h-10 rounded-lg border-slate-200 bg-white text-sm font-bold px-3"
+                                                />
                                             </div>
 
                                             {(showLengthColumn || showHeightColumn || isKg) && (

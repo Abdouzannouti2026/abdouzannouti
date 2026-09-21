@@ -1,14 +1,14 @@
 
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 import Header from './Header';
-import { FileText, Download, Plus, Pencil, Printer, MoreVertical, Trash2, CheckCircle, RefreshCw, Loader2, ChevronLeft, ChevronRight, Search, MessageSquare, Eye } from 'lucide-react';
-import { CreditNote, CreditNoteStatus, Client, Product, CompanySettings } from '../types';
+import { FileText, Download, Plus, Pencil, Printer, MoreVertical, Trash2, CheckCircle, RefreshCw, Loader2, ChevronLeft, ChevronRight, Search, Eye, RotateCcw } from 'lucide-react';
+import { CreditNote, CreditNoteStatus, Client, Product, CompanySettings, Invoice } from '../types';
 import CreateCreditNoteModal from './CreateCreditNoteModal';
 import ConfirmationModal from './ConfirmationModal';
 import { generatePDF, printDocument } from '../services/pdfService';
 import { useLanguage } from '../contexts/LanguageContext';
-import { shareDocument } from '../services/shareService';
 import DocumentPreviewModal from './DocumentPreviewModal';
 
 const statusBadgeClasses: { [key in CreditNoteStatus]: string } = {
@@ -25,6 +25,7 @@ interface CreditNotesProps {
     onDeleteCreditNote: (id: string) => void;
     clients?: Client[];
     products?: Product[];
+    invoices?: Invoice[];
     companySettings?: CompanySettings | null;
     generateDocumentId?: () => string;
 }
@@ -37,14 +38,26 @@ const CreditNotes: React.FC<CreditNotesProps> = ({
     onDeleteCreditNote, 
     clients = [], 
     products = [],
+    invoices = [],
     companySettings,
     generateDocumentId
 }) => {
     const { t, isRTL } = useLanguage();
+    const location = useLocation();
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+    const [prefilledInvoice, setPrefilledInvoice] = useState<Invoice | null>(null);
     const [creditNoteToEdit, setCreditNoteToEdit] = useState<CreditNote | null>(null);
     const [downloadingId, setDownloadingId] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
+
+    useEffect(() => {
+        if (location.state && (location.state as any).prefilledInvoice) {
+            setPrefilledInvoice((location.state as any).prefilledInvoice);
+            setCreditNoteToEdit(null);
+            setIsCreateModalOpen(true);
+            window.history.replaceState({}, document.title);
+        }
+    }, [location.state]);
 
     // Responsive items per page
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -245,10 +258,16 @@ const CreditNotes: React.FC<CreditNotesProps> = ({
             
             <CreateCreditNoteModal 
                 isOpen={isCreateModalOpen}
-                onClose={() => setIsCreateModalOpen(false)}
+                onClose={() => {
+                    setIsCreateModalOpen(false);
+                    setPrefilledInvoice(null);
+                    setCreditNoteToEdit(null);
+                }}
                 onSave={handleSave}
                 clients={clients}
                 products={products}
+                invoices={invoices}
+                prefilledInvoice={prefilledInvoice}
                 creditNoteToEdit={creditNoteToEdit}
                 companySettings={companySettings}
                 generateDocumentId={generateDocumentId}
@@ -315,9 +334,26 @@ const CreditNotes: React.FC<CreditNotesProps> = ({
                                         <td className={`whitespace-nowrap px-6 py-4 text-sm font-medium text-slate-500 ${isRTL ? 'text-right' : 'text-left'}`}>{note.invoiceId || '-'}</td>
                                         <td className={`whitespace-nowrap px-6 py-4 text-sm font-extrabold text-slate-900 ${isRTL ? 'text-right' : 'text-left'}`}>{note.amount.toLocaleString('fr-FR', { style: 'currency', currency: companySettings?.defaultCurrencyCode || 'MAD' })}</td>
                                         <td className={`whitespace-nowrap px-6 py-4 text-sm ${isRTL ? 'text-right' : 'text-left'}`}>
-                                            <span className={statusBadgeClasses[note.status] || 'badge-neutral'}>
-                                                {getStatusLabel(note.status)}
-                                            </span>
+                                            <div className="flex flex-col gap-1 items-start">
+                                                <span className={statusBadgeClasses[note.status] || 'badge-neutral'}>
+                                                    {getStatusLabel(note.status)}
+                                                </span>
+                                                {note.returnToStock !== false && (
+                                                    <span 
+                                                        className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md ${
+                                                            note.status === CreditNoteStatus.Validated || note.status === CreditNoteStatus.Refunded
+                                                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/80'
+                                                                : 'bg-slate-100 text-slate-600 border border-slate-200'
+                                                        }`}
+                                                        title={note.status === CreditNoteStatus.Validated || note.status === CreditNoteStatus.Refunded ? 'Articles réintégrés au stock' : 'Sera réintégré lors de la validation'}
+                                                    >
+                                                        <RotateCcw className="w-2.5 h-2.5" />
+                                                        {note.status === CreditNoteStatus.Validated || note.status === CreditNoteStatus.Refunded
+                                                            ? (isRTL ? 'مخزون مسترجع' : 'Stock réintégré')
+                                                            : (isRTL ? 'في الانتظار' : 'Stock en attente')}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </td>
                                         <td className={`whitespace-nowrap px-6 py-4 text-sm font-medium relative ${isRTL ? 'text-left' : 'text-right'}`}>
                                             <button 
@@ -351,11 +387,25 @@ const CreditNotes: React.FC<CreditNotesProps> = ({
                             <div key={note.id} className="p-4 bg-white mb-2.5 rounded-2xl shadow-xs border border-slate-100 transition-all active:bg-slate-50">
                                 <div className="flex justify-between items-start mb-3">
                                     <div className="min-w-0 flex-1">
-                                        <div className="flex items-center gap-2 mb-1">
+                                        <div className="flex flex-wrap items-center gap-2 mb-1">
                                             <p className="text-xs font-bold text-emerald-600">#{note.documentId || note.id}</p>
                                             <span className={statusBadgeClasses[note.status] || 'badge-neutral'}>
                                                 {getStatusLabel(note.status)}
                                             </span>
+                                            {note.returnToStock !== false && (
+                                                <span 
+                                                    className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md ${
+                                                        note.status === CreditNoteStatus.Validated || note.status === CreditNoteStatus.Refunded
+                                                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/80'
+                                                            : 'bg-slate-100 text-slate-600 border border-slate-200'
+                                                    }`}
+                                                >
+                                                    <RotateCcw className="w-2.5 h-2.5" />
+                                                    {note.status === CreditNoteStatus.Validated || note.status === CreditNoteStatus.Refunded
+                                                        ? (isRTL ? 'مخزون مسترجع' : 'Stock')
+                                                        : (isRTL ? 'انتظار' : 'En attente')}
+                                                </span>
+                                            )}
                                         </div>
                                         <p className="text-sm font-bold text-slate-900 truncate pr-2">{note.clientName}</p>
                                     </div>
@@ -514,19 +564,6 @@ const CreditNotes: React.FC<CreditNotesProps> = ({
                             className="flex w-full items-center px-3 py-2 text-[13px] font-semibold text-slate-700 rounded-xl hover:bg-slate-50 hover:text-emerald-600 transition-colors group disabled:opacity-50"
                         >
                             {isDownloading ? <Loader2 size={16} className={`animate-spin ${isRTL ? 'ml-3' : 'mr-3'}`} /> : <Download size={16} className={`text-slate-500 group-hover:text-emerald-600 ${isRTL ? 'ml-3' : 'mr-3'}`} />} {t('download')}
-                        </button>
-
-                        <button 
-                            onClick={async () => {
-                                const client = clients.find(c => c.id === activeNote.clientId);
-                                setSelectedDocForPreview(activeNote);
-                                setSelectedRecipientForPreview(client);
-                                setIsPreviewModalOpen(true);
-                                setActiveMenuId(null);
-                            }}
-                            className="flex w-full items-center px-3 py-2 text-[13px] font-semibold text-slate-700 rounded-xl hover:bg-slate-50 hover:text-emerald-600 transition-colors group"
-                        >
-                            <MessageSquare size={16} className={`text-emerald-500 ${isRTL ? 'ml-3' : 'mr-3'}`} /> {t('sendWhatsApp')}
                         </button>
 
                         <div className="border-t border-slate-100 my-1 mx-2"></div>

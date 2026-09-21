@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { Menu, X, Files } from 'lucide-react';
 import { Client, Product, Supplier, Quote, QuoteStatus, Invoice, InvoiceStatus, CompanySettings, Payment, StockMovement, DeliveryNote, PurchaseOrder, PurchaseOrderStatus, CreditNote, CreditNoteStatus, Expense, SalaryPayment, Employee, Attendance } from './types';
@@ -76,6 +76,18 @@ const MainContent: React.FC = () => {
     const [expenses, setExpenses] = useState<Expense[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const initialRedirectDone = useRef(false);
+    const loadStartedRef = useRef(false);
+
+    useEffect(() => {
+        if (!initialRedirectDone.current) {
+            initialRedirectDone.current = true;
+            // On refresh or first load, ensure user enters directly to /dashboard instead of /pos
+            if (location.pathname === '/pos' || location.pathname === '/') {
+                navigate('/dashboard', { replace: true });
+            }
+        }
+    }, [location.pathname, navigate]);
 
     useEffect(() => {
         const loadData = async (isRetry = false, silent = false) => {
@@ -144,7 +156,10 @@ const MainContent: React.FC = () => {
                 }
             }
         };
-        loadData();
+        if (!loadStartedRef.current) {
+            loadStartedRef.current = true;
+            loadData();
+        }
         
         const handleRefresh = (e?: any) => {
             const silent = e?.detail?.silent !== false;
@@ -885,9 +900,46 @@ const MainContent: React.FC = () => {
     const addCreditNote = async (creditNoteData: Omit<CreditNote, 'id'>) => {
         try {
             const documentId = creditNoteData.documentId || generateDocumentId('creditNote', creditNotes);
-            const newCreditNote: CreditNote = { id: generateUUID(), documentId: documentId, ...creditNoteData };
+            
+            // Map items and ensure productId is resolved from catalog if missing
+            const enrichedLineItems = creditNoteData.lineItems.map(item => {
+                if (item.productId) return item;
+                const matchingProduct = products.find(p => 
+                    (item.productCode && p.productCode === item.productCode) || 
+                    (item.name && p.name.trim().toLowerCase() === item.name.trim().toLowerCase())
+                );
+                return matchingProduct ? { ...item, productId: matchingProduct.id } : item;
+            });
+
+            const newCreditNote: CreditNote = { 
+                id: generateUUID(), 
+                documentId: documentId, 
+                returnToStock: creditNoteData.returnToStock !== false,
+                ...creditNoteData,
+                lineItems: enrichedLineItems
+            };
+
+            // Reintegrate stock if the credit note is Validated or Refunded and returnToStock is true
+            if (newCreditNote.returnToStock !== false && 
+               (newCreditNote.status === CreditNoteStatus.Validated || newCreditNote.status === CreditNoteStatus.Refunded)) {
+                for (const item of newCreditNote.lineItems) {
+                    if (item.productId && item.quantity > 0) {
+                        await addStockMovement({
+                            productId: item.productId,
+                            variantId: item.variantId,
+                            productName: item.name,
+                            date: newCreditNote.date,
+                            quantity: item.quantity, // POSITIVE = IN (Stock restored to inventory)
+                            type: 'Retour',
+                            reference: `Avoir ${newCreditNote.documentId || newCreditNote.id}`
+                        });
+                    }
+                }
+            }
+
             await dbService.creditNotes.add(newCreditNote);
             setCreditNotes(prev => [newCreditNote, ...prev].sort((a, b) => (b.documentId || b.id).localeCompare(a.documentId || a.id)));
+            return newCreditNote;
         } catch (e: any) {
             console.error("Error creating credit note", e);
             alert("Erreur création avoir: " + e.message);
@@ -896,6 +948,67 @@ const MainContent: React.FC = () => {
     };
     const updateCreditNote = async (updatedCreditNote: CreditNote) => {
         try {
+            const existingCn = creditNotes.find(c => c.id === updatedCreditNote.id);
+            if (!existingCn) return;
+
+            // Ensure line items have resolved product IDs
+            const enrichedItems = updatedCreditNote.lineItems.map(item => {
+                if (item.productId) return item;
+                const matchingProduct = products.find(p => 
+                    (item.productCode && p.productCode === item.productCode) || 
+                    (item.name && p.name.trim().toLowerCase() === item.name.trim().toLowerCase())
+                );
+                return matchingProduct ? { ...item, productId: matchingProduct.id } : item;
+            });
+            updatedCreditNote.lineItems = enrichedItems;
+
+            const wasRestocked = existingCn.returnToStock !== false && 
+                (existingCn.status === CreditNoteStatus.Validated || existingCn.status === CreditNoteStatus.Refunded);
+            const willBeRestocked = updatedCreditNote.returnToStock !== false && 
+                (updatedCreditNote.status === CreditNoteStatus.Validated || updatedCreditNote.status === CreditNoteStatus.Refunded);
+
+            const stockChanges: Map<string, { qty: number, productId: string, variantId?: string, name: string }> = new Map();
+
+            // 1. If was previously restocked, subtract old quantities
+            if (wasRestocked) {
+                existingCn.lineItems.forEach(item => {
+                    if (item.productId) {
+                        const key = `${item.productId}-${item.variantId || 'base'}`;
+                        const cur = stockChanges.get(key) || { qty: 0, productId: item.productId, variantId: item.variantId, name: item.name };
+                        cur.qty -= item.quantity;
+                        stockChanges.set(key, cur);
+                    }
+                });
+            }
+
+            // 2. If will be restocked, add new quantities
+            if (willBeRestocked) {
+                updatedCreditNote.lineItems.forEach(item => {
+                    if (item.productId) {
+                        const key = `${item.productId}-${item.variantId || 'base'}`;
+                        const cur = stockChanges.get(key) || { qty: 0, productId: item.productId, variantId: item.variantId, name: item.name };
+                        cur.qty += item.quantity;
+                        stockChanges.set(key, cur);
+                    }
+                });
+            }
+
+            // 3. Apply net stock changes
+            const changes = Array.from(stockChanges.values());
+            for (const change of changes) {
+                if (Math.abs(change.qty) > 0.000001) {
+                    await addStockMovement({
+                        productId: change.productId,
+                        variantId: change.variantId,
+                        productName: change.name,
+                        date: updatedCreditNote.date,
+                        quantity: change.qty, // positive = more returned to stock, negative = removed
+                        type: change.qty > 0 ? 'Retour' : 'Ajustement',
+                        reference: `Modif Avoir ${updatedCreditNote.documentId || updatedCreditNote.id}`
+                    });
+                }
+            }
+
             const savedCreditNote = await dbService.creditNotes.update(updatedCreditNote);
             setCreditNotes(prev => prev.map(cn => cn.id === updatedCreditNote.id ? savedCreditNote : cn));
         } catch (e: any) {
@@ -905,6 +1018,25 @@ const MainContent: React.FC = () => {
     };
     const deleteCreditNote = async (id: string) => {
         try {
+            const cnToDelete = creditNotes.find(c => c.id === id);
+            if (cnToDelete && cnToDelete.returnToStock !== false && 
+               (cnToDelete.status === CreditNoteStatus.Validated || cnToDelete.status === CreditNoteStatus.Refunded)) {
+                // Cancel stock return by subtracting the returned items
+                for (const item of cnToDelete.lineItems) {
+                    if (item.productId && item.quantity > 0) {
+                        await addStockMovement({
+                            productId: item.productId,
+                            variantId: item.variantId,
+                            productName: item.name,
+                            date: new Date().toISOString().split('T')[0],
+                            quantity: -item.quantity,
+                            type: 'Ajustement',
+                            reference: `Suppr Avoir ${cnToDelete.documentId || cnToDelete.id}`
+                        });
+                    }
+                }
+            }
+
             await dbService.creditNotes.delete(id);
             const remaining = creditNotes.filter(cn => cn.id !== id);
             setCreditNotes(remaining);
@@ -915,24 +1047,53 @@ const MainContent: React.FC = () => {
     };
     const updateCreditNoteStatus = async (id: string, newStatus: CreditNoteStatus) => {
         const cn = creditNotes.find(c => c.id === id);
-        if (cn) {
-            const updatedCn = { ...cn, status: newStatus };
-            await dbService.creditNotes.update(updatedCn);
-            setCreditNotes(prev => prev.map(c => c.id === id ? updatedCn : c));
+        if (!cn || cn.status === newStatus) return;
+
+        const wasRestocked = cn.returnToStock !== false && 
+            (cn.status === CreditNoteStatus.Validated || cn.status === CreditNoteStatus.Refunded);
+        const willBeRestocked = cn.returnToStock !== false && 
+            (newStatus === CreditNoteStatus.Validated || newStatus === CreditNoteStatus.Refunded);
+
+        if (!wasRestocked && willBeRestocked) {
+            // Draft -> Validated/Refunded: RESTORE STOCK
+            for (const item of cn.lineItems) {
+                if (item.productId && item.quantity > 0) {
+                    await addStockMovement({
+                        productId: item.productId,
+                        variantId: item.variantId,
+                        productName: item.name,
+                        date: cn.date,
+                        quantity: item.quantity,
+                        type: 'Retour',
+                        reference: `Avoir ${cn.documentId || cn.id}`
+                    });
+                }
+            }
+        } else if (wasRestocked && !willBeRestocked) {
+            // Validated/Refunded -> Draft: REVERSE STOCK RESTORATION
+            for (const item of cn.lineItems) {
+                if (item.productId && item.quantity > 0) {
+                    await addStockMovement({
+                        productId: item.productId,
+                        variantId: item.variantId,
+                        productName: item.name,
+                        date: new Date().toISOString().split('T')[0],
+                        quantity: -item.quantity,
+                        type: 'Ajustement',
+                        reference: `Annulation Avoir ${cn.documentId || cn.id}`
+                    });
+                }
+            }
         }
+
+        const updatedCn = { ...cn, status: newStatus };
+        await dbService.creditNotes.update(updatedCn);
+        setCreditNotes(prev => prev.map(c => c.id === id ? updatedCn : c));
     };
-    const createCreditNoteFromInvoice = async (invoiceId: string) => {
+    const createCreditNoteFromInvoice = (invoiceId: string) => {
         const invoice = invoices.find(inv => inv.id === invoiceId);
         if (!invoice) return;
-        try {
-            const documentId = generateDocumentId('creditNote', creditNotes);
-            const newCreditNote: CreditNote = { id: generateUUID(), documentId: documentId, invoiceId: invoice.documentId || invoice.id, clientId: invoice.clientId, clientName: invoice.clientName, date: new Date().toISOString().split('T')[0], status: CreditNoteStatus.Draft, subject: `Avoir sur facture ${invoice.documentId || invoice.id}`, reference: invoice.reference, lineItems: invoice.lineItems, subTotal: invoice.subTotal, vatAmount: invoice.vatAmount, amount: invoice.amount };
-            await dbService.creditNotes.add(newCreditNote);
-            setCreditNotes(prev => [newCreditNote, ...prev].sort((a, b) => (b.documentId || b.id).localeCompare(a.documentId || a.id)));
-            navigate('/sales/credit-notes');
-        } catch (e: any) {
-            alert("Erreur création avoir: " + e.message);
-        }
+        navigate('/sales/credit-notes', { state: { prefilledInvoice: invoice } });
     };
 
     const createDeliveryNote = async (noteData: Omit<DeliveryNote, 'id'>) => {
@@ -1302,7 +1463,7 @@ const MainContent: React.FC = () => {
                             <Route path="/statistics" element={<Statistics invoices={invoices} payments={payments} purchaseOrders={purchaseOrders} products={products} creditNotes={creditNotes} expenses={expenses} salaryPayments={salaryPayments} stockMovements={stockMovements} companySettings={companySettings} />} />
                             <Route path="/sales/quotes" element={<Quotes quotes={quotes} onUpdateQuoteStatus={updateQuoteStatus} onCreateInvoice={createInvoiceFromQuote} onAddQuote={addQuote} onUpdateQuote={updateQuote} onDeleteQuote={deleteQuote} clients={clients} products={products} companySettings={companySettings} generateDocumentId={() => generateDocumentId('quote', quotes)} />} />
                             <Route path="/sales/invoices" element={<InvoicesComponent invoices={invoices} onUpdateInvoiceStatus={updateInvoiceStatus} onAddPayment={addPayment} onCreateInvoice={addInvoice} onUpdateInvoice={updateInvoice} onDeleteInvoice={deleteInvoice} onCreateCreditNote={createCreditNoteFromInvoice} clients={clients} products={products} companySettings={companySettings} generateDocumentId={() => generateDocumentId('invoice', invoices)} />} />
-                            <Route path="/sales/credit-notes" element={<CreditNotesComponent creditNotes={creditNotes} onUpdateCreditNoteStatus={updateCreditNoteStatus} onCreateCreditNote={addCreditNote} onUpdateCreditNote={updateCreditNote} onDeleteCreditNote={deleteCreditNote} clients={clients} products={products} companySettings={companySettings} generateDocumentId={() => generateDocumentId('creditNote', creditNotes)} />} />
+                            <Route path="/sales/credit-notes" element={<CreditNotesComponent creditNotes={creditNotes} onUpdateCreditNoteStatus={updateCreditNoteStatus} onCreateCreditNote={addCreditNote} onUpdateCreditNote={updateCreditNote} onDeleteCreditNote={deleteCreditNote} clients={clients} products={products} invoices={invoices} companySettings={companySettings} generateDocumentId={() => generateDocumentId('creditNote', creditNotes)} />} />
                             <Route path="/sales/payments" element={<PaymentTracking invoices={invoices} payments={payments} onAddPayment={addPayment} clients={clients} companySettings={companySettings} />} />
                             <Route path="/sales/delivery" element={<DeliveryNotesComponent deliveryNotes={deliveryNotes} invoices={invoices} onCreateDeliveryNote={createDeliveryNote} onUpdateDeliveryNote={updateDeliveryNote} onDeleteDeliveryNote={deleteDeliveryNote} onCreateInvoice={createInvoiceFromDeliveryNote} clients={clients} products={products} companySettings={companySettings} generateDocumentId={() => generateDocumentId('deliveryNote', deliveryNotes)} />} />
                             <Route path="/purchases/orders" element={<PurchaseOrders orders={purchaseOrders} suppliers={suppliers} products={products} onAddOrder={addPurchaseOrder} onUpdateOrder={updatePurchaseOrder} onUpdateStatus={updatePurchaseOrderStatus} onDeleteOrder={deletePurchaseOrder} onConvertToInvoice={(order) => navigate('/sales/invoices', { state: { prefilledOrder: order } })} companySettings={companySettings} generateDocumentId={() => generateDocumentId('purchaseOrder', purchaseOrders)} />} />
@@ -1384,7 +1545,12 @@ const App: React.FC = () => {
                 console.log("Supabase PASSWORD_RECOVERY event received!");
                 setIsResettingPassword(true);
             }
-            setSession(session);
+            setSession(prev => {
+                if (prev?.user?.id === session?.user?.id && prev?.access_token === session?.access_token) {
+                    return prev;
+                }
+                return session;
+            });
             setLoading(false);
         });
 

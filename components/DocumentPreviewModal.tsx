@@ -1,10 +1,9 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Download, Printer, MessageSquare, Loader2, Receipt } from 'lucide-react';
+import { X, Download, Printer, Loader2, Receipt } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { generateDocumentHTML, generatePDF, printDocument, printThermalTicket, generatePDFBlob, DocumentType, DocumentData } from '../services/pdfService';
-import { shareDocument } from '../services/shareService';
 import { Client, Supplier, CompanySettings } from '../types';
 import ThermalTicketModal from './ThermalTicketModal';
 
@@ -137,18 +136,6 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
         }
     };
 
-    const handleShare = async () => {
-        if (isActionLoading) return;
-        setIsActionLoading(true);
-        try {
-            // We pass the pre-generated blob to the share service if available
-            // We'll need to update shareDocument to accept an optional blob
-            await shareDocument(type, doc, settings, effectiveRecipient, isRTL, language, preGeneratedBlob || undefined);
-        } finally {
-            setIsActionLoading(false);
-        }
-    };
-
     if (!isOpen) return null;
 
     return createPortal(
@@ -170,24 +157,15 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
                     
                     <div className="flex items-center gap-2">
                         <button 
-                            onClick={handleShare}
+                            onClick={handleDownload}
                             disabled={isActionLoading}
                             className="hidden sm:inline-flex btn-primary"
                         >
-                            {isActionLoading ? <Loader2 size={16} className="animate-spin" /> : <MessageSquare size={16} />}
-                            <span>{isActionLoading ? (language === 'fr' ? 'Traitement...' : 'Processing...') : t('sendWhatsApp')}</span>
+                            {isActionLoading ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                            <span>{isActionLoading ? (language === 'fr' ? 'Téléchargement...' : 'Downloading...') : t('download')}</span>
                         </button>
                         
                         <div className="w-px h-6 bg-slate-200 mx-1 hidden sm:block"></div>
-
-                        <button 
-                            onClick={handleDownload}
-                            disabled={isActionLoading}
-                            className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors disabled:opacity-50"
-                            title={t('download')}
-                        >
-                            <Download size={18} />
-                        </button>
 
                         <button 
                             onClick={handlePrint}
@@ -238,12 +216,12 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
                 {/* Mobile Footer Action */}
                 <div className="sm:hidden p-4 bg-white border-t border-slate-200">
                     <button 
-                        onClick={handleShare}
+                        onClick={handleDownload}
                         disabled={isActionLoading}
                         className="w-full btn-primary justify-center"
                     >
-                         {isActionLoading ? <Loader2 size={18} className="animate-spin" /> : <MessageSquare size={18} />}
-                         <span>{isActionLoading ? (language === 'fr' ? 'Traitement...' : 'Processing...') : t('sendWhatsApp')}</span>
+                         {isActionLoading ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
+                         <span>{isActionLoading ? (language === 'fr' ? 'Téléchargement...' : 'Downloading...') : t('download')}</span>
                     </button>
                 </div>
             </div>

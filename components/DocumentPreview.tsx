@@ -42,6 +42,9 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ settings, document, c
         isDeliveryNote = true;
     }
 
+    const isCreditNote = 'returnToStock' in document || (document as any).invoiceId !== undefined || documentType === t('creditNotes').toUpperCase();
+    const hasInvoiceQty = isCreditNote && document.lineItems.some(i => i.invoiceQuantity !== undefined);
+
     const docSubject = document.subject || document.lineItems[0]?.subject || "";
     const docPaymentMethod = document.paymentMethod || document.lineItems[0]?.paymentMethod || "";
     const docCheckNumber = document.checkNumber || document.lineItems[0]?.checkNumber || "";
@@ -282,7 +285,14 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ settings, document, c
                                 {showReference && <th className="py-3 px-4 align-middle font-semibold uppercase text-[10px] rounded-tl-lg rounded-bl-lg w-20 whitespace-nowrap">{getColLabel('reference', t('refLabel'))}</th>}
                                 <th className={`py-3 px-2 align-middle font-semibold uppercase text-[10px] ${!showReference ? 'rounded-tl-lg rounded-bl-lg' : ''} min-w-[320px] whitespace-nowrap`}>{getColLabel('name', t('description'))}</th>
                                 <th className="py-3 px-1 align-middle text-center font-semibold uppercase text-[10px] w-14 whitespace-nowrap">{getColLabel('unit', t('unit'))}</th>
-                                <th className="py-3 px-1 align-middle text-center font-semibold uppercase text-[10px] w-10 whitespace-nowrap">{getColLabel('quantity', t('quantity'))}</th>
+                                {hasInvoiceQty ? (
+                                    <>
+                                        <th className="py-3 px-1 align-middle text-center font-semibold uppercase text-[10px] w-12 whitespace-nowrap">{language === 'ar' ? 'الكمية المفوترة' : 'Qté Facturée'}</th>
+                                        <th className="py-3 px-1 align-middle text-center font-semibold uppercase text-[10px] w-12 whitespace-nowrap text-emerald-700 bg-emerald-50/60">{getColLabel('avoir', language === 'ar' ? 'كمية الإرجاع' : 'AV')}</th>
+                                    </>
+                                ) : (
+                                    <th className="py-3 px-1 align-middle text-center font-semibold uppercase text-[10px] w-10 whitespace-nowrap">{getColLabel('quantity', t('quantity'))}</th>
+                                )}
                                 {isM2 && (
                                     <>
                                         <th className="py-3 px-1 align-middle text-center font-semibold uppercase text-[10px] w-10 whitespace-nowrap">Larg.</th>
@@ -317,7 +327,14 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ settings, document, c
                                         {item.description && <div className="text-[9px] text-neutral-500 mt-1 leading-normal italic font-normal" dangerouslySetInnerHTML={{ __html: item.description }} />}
                                     </td>
                                     <td className={`py-3 px-2 text-center align-middle text-[10px] font-medium ${borderStyle}`}>{item.unit || '-'}</td>
-                                    <td className={`py-3 px-2 text-center align-middle font-bold text-[11px] ${(!isDeliveryNote || isM2 || isML || isKg) ? borderStyle : ''}`}>{item.quantity}</td>
+                                    {hasInvoiceQty ? (
+                                        <>
+                                            <td className={`py-3 px-2 text-center align-middle font-bold text-[11px] text-slate-500 bg-slate-50/50 ${borderStyle}`}>{item.invoiceQuantity !== undefined ? item.invoiceQuantity : item.quantity}</td>
+                                            <td className={`py-3 px-2 text-center align-middle font-bold text-[11px] text-emerald-700 bg-emerald-50/30 ${(!isDeliveryNote || isM2 || isML || isKg) ? borderStyle : ''}`}>{(item as any).avoirQuantity ?? (item as any).returnQuantity ?? (item as any).returnedQuantity ?? item.quantity}</td>
+                                        </>
+                                    ) : (
+                                        <td className={`py-3 px-2 text-center align-middle font-bold text-[11px] ${(!isDeliveryNote || isM2 || isML || isKg) ? borderStyle : ''}`}>{item.quantity}</td>
+                                    )}
                                     {isM2 && (
                                         <>
                                             <td className={`py-3 px-2 text-center align-middle text-[10px] ${borderStyle}`}>{item.length || 1}</td>

@@ -13,6 +13,7 @@ import {
   ThermalTicketOptions,
   DocumentData 
 } from '../services/pdfService';
+import { dbService } from '../db';
 
 interface ThermalTicketModalProps {
   isOpen: boolean;
@@ -54,6 +55,7 @@ export const ThermalTicketModal: React.FC<ThermalTicketModalProps> = ({
   );
   const [rememberPreference, setRememberPreference] = useState<boolean>(true);
   const [mobileTab, setMobileTab] = useState<'preview' | 'options'>('preview');
+  const [previewHeight, setPreviewHeight] = useState<number>(360);
 
   useEffect(() => {
     if (settings?.footerNotes) {
@@ -77,15 +79,30 @@ export const ThermalTicketModal: React.FC<ThermalTicketModalProps> = ({
     isPrintMode: false
   };
 
-  const handlePrint = () => {
-    if (rememberPreference) {
-      localStorage.setItem('facturago_preferred_thermal_width', ticketWidth);
-      if (onSaveSettings && settings && (ticketWidth === '80mm' || ticketWidth === '58mm')) {
-        onSaveSettings({
+  const persistWidthPreference = (width: '80mm' | '58mm') => {
+    try {
+      localStorage.setItem('facturago_preferred_thermal_width', width);
+      if (settings) {
+        const updatedSettings: CompanySettings = {
           ...settings,
-          defaultThermalTicketWidth: ticketWidth
-        }).catch(() => {});
+          defaultThermalTicketWidth: width
+        };
+        if (onSaveSettings) {
+          onSaveSettings(updatedSettings).catch(() => {});
+        } else {
+          dbService.settings.update(updatedSettings).catch(err => {
+            console.warn('Auto-save ticket settings error:', err);
+          });
+        }
       }
+    } catch (e) {
+      console.warn('Could not save thermal ticket preference:', e);
+    }
+  };
+
+  const handlePrint = () => {
+    if (rememberPreference && (ticketWidth === '80mm' || ticketWidth === '58mm')) {
+      persistWidthPreference(ticketWidth);
     }
     printThermalTicket(doc, settings, recipient, {
       ...currentOptions,
@@ -192,7 +209,10 @@ export const ThermalTicketModal: React.FC<ThermalTicketModalProps> = ({
                 {/* 80mm Card */}
                 <button
                   type="button"
-                  onClick={() => setTicketWidth('80mm')}
+                  onClick={() => {
+                    setTicketWidth('80mm');
+                    if (rememberPreference) persistWidthPreference('80mm');
+                  }}
                   className={`p-3.5 rounded-2xl border text-left transition-all relative flex flex-col justify-between min-h-[44px] ${
                     ticketWidth === '80mm'
                       ? 'border-emerald-500 bg-emerald-50/50 shadow-sm ring-2 ring-emerald-500/20'
@@ -223,7 +243,10 @@ export const ThermalTicketModal: React.FC<ThermalTicketModalProps> = ({
                 {/* 58mm Card */}
                 <button
                   type="button"
-                  onClick={() => setTicketWidth('58mm')}
+                  onClick={() => {
+                    setTicketWidth('58mm');
+                    if (rememberPreference) persistWidthPreference('58mm');
+                  }}
                   className={`p-3.5 rounded-2xl border text-left transition-all relative flex flex-col justify-between min-h-[44px] ${
                     ticketWidth === '58mm'
                       ? 'border-emerald-500 bg-emerald-50/50 shadow-sm ring-2 ring-emerald-500/20'
@@ -510,8 +533,8 @@ export const ThermalTicketModal: React.FC<ThermalTicketModalProps> = ({
               <div 
                 className="bg-white text-black shadow-xl rounded-sm border border-slate-200 relative transition-all duration-300 max-w-full"
                 style={{
-                  width: ticketWidth === '58mm' ? '240px' : ticketWidth === 'custom' ? `${Math.min(300, Math.max(190, customWidthMm * 3.6))}px` : '290px',
-                  minHeight: '340px'
+                  width: ticketWidth === '58mm' ? '218px' : ticketWidth === 'custom' ? `${Math.min(300, Math.max(190, customWidthMm * 3.6))}px` : '290px',
+                  minHeight: '200px'
                 }}
               >
                 {/* Sawtooth top edge (jagged paper tear) */}
@@ -523,14 +546,27 @@ export const ThermalTicketModal: React.FC<ThermalTicketModalProps> = ({
                   }}
                 />
 
-                <div className="p-1">
+                <div className="p-0.5">
                   <iframe
                     title="Receipt Preview"
                     srcDoc={previewHtml}
-                    className="w-full border-0 pointer-events-none"
+                    className="w-full border-0 pointer-events-none transition-all duration-200"
                     style={{
-                      height: '460px',
+                      height: `${previewHeight}px`,
                       overflow: 'hidden'
+                    }}
+                    onLoad={(e) => {
+                      try {
+                        const iframeDoc = e.currentTarget.contentDocument;
+                        if (iframeDoc?.body) {
+                          const scrollH = iframeDoc.body.scrollHeight;
+                          if (scrollH && scrollH > 50) {
+                            setPreviewHeight(Math.ceil(scrollH) + 6);
+                          }
+                        }
+                      } catch (err) {
+                        // ignore
+                      }
                     }}
                   />
                 </div>

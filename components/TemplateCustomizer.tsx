@@ -28,6 +28,7 @@ const DEFAULT_COLUMNS: DocumentColumn[] = [
     { id: 'unitPrice', label: 'P.U. HT', visible: true, order: 4 },
     { id: 'vat', label: 'TVA', visible: true, order: 5 },
     { id: 'total', label: 'Total HT', visible: true, order: 6 },
+    { id: 'avoir', label: 'AV', visible: false, order: 7 },
 ];
 
 const DEFAULT_LABELS: DocumentLabels = {
@@ -1932,6 +1933,11 @@ const TemplateCustomizer: React.FC<TemplateCustomizerProps> = ({ settings, onSav
                                                         />
                                                     </div>
                                                     <div className="flex items-center justify-end gap-3">
+                                                        {col.id === 'avoir' && (
+                                                            <span className="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded-md font-medium border border-purple-100">
+                                                                {language === 'ar' ? 'خاص بفواتير الإرجاع فقط' : 'Uniquement sur Avoirs'}
+                                                            </span>
+                                                        )}
                                                         <span className={`text-xs font-semibold ${col.visible ? 'text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md' : 'text-slate-400'}`}>
                                                             {col.visible ? (language === 'ar' ? 'مُفعلة' : 'Affichée') : (language === 'ar' ? 'مخفية' : 'Masquée')}
                                                         </span>
