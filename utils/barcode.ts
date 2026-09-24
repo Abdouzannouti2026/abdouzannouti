@@ -1,4 +1,12 @@
-import { BrowserMultiFormatReader, BarcodeFormat, DecodeHintType } from '@zxing/library';
+import { 
+  BarcodeFormat, 
+  DecodeHintType, 
+  MultiFormatReader, 
+  RGBLuminanceSource, 
+  BinaryBitmap, 
+  HybridBinarizer,
+  GlobalHistogramBinarizer 
+} from '@zxing/library';
 
 /**
  * Barcode utility functions: SVG rendering, barcode generation, audio beep, image decoding.
@@ -8,8 +16,29 @@ import { BrowserMultiFormatReader, BarcodeFormat, DecodeHintType } from '@zxing/
  * Scan barcode from an uploaded image File using ZXing MultiFormatReader + Native BarcodeDetector
  */
 export async function scanBarcodeFromFile(file: File): Promise<string | null> {
-  // 1. Try ZXing BrowserMultiFormatReader
+  const objectUrl = URL.createObjectURL(file);
+
   try {
+    const img = new Image();
+    img.src = objectUrl;
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
+    });
+
+    // 1. Try Native BarcodeDetector API if available
+    if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
+      try {
+        const detector = new (window as any).BarcodeDetector();
+        const barcodes = await detector.detect(img);
+        if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+          URL.revokeObjectURL(objectUrl);
+          return barcodes[0].rawValue;
+        }
+      } catch {}
+    }
+
+    // 2. ZXing MultiFormatReader setup
     const hints = new Map();
     hints.set(DecodeHintType.POSSIBLE_FORMATS, [
       BarcodeFormat.EAN_13,
@@ -20,44 +49,90 @@ export async function scanBarcodeFromFile(file: File): Promise<string | null> {
       BarcodeFormat.UPC_E,
       BarcodeFormat.ITF,
       BarcodeFormat.QR_CODE,
+      BarcodeFormat.DATA_MATRIX
     ]);
     hints.set(DecodeHintType.TRY_HARDER, true);
 
-    const reader = new BrowserMultiFormatReader(hints);
-    const objectUrl = URL.createObjectURL(file);
+    const reader = new MultiFormatReader();
+    reader.setHints(hints);
 
-    try {
-      const img = new Image();
-      img.src = objectUrl;
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = reject;
-      });
-
-      const result = await reader.decodeFromImageElement(img);
+    // Create canvas and scale image if it's high-res (e.g. 4000x3000 down to max 1280 for optimal ZXing recognition)
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) {
       URL.revokeObjectURL(objectUrl);
-      if (result && result.getText()) {
-        return result.getText();
-      }
-    } catch (zxingErr) {
-      URL.revokeObjectURL(objectUrl);
+      return null;
     }
-  } catch (e) {
-    // ZXing fallback
-  }
 
-  // 2. Fallback to native BarcodeDetector API if available
-  if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
-    try {
-      const detector = new (window as any).BarcodeDetector();
-      const bitmap = await createImageBitmap(file);
-      const barcodes = await detector.detect(bitmap);
-      if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
-        return barcodes[0].rawValue;
+    const maxDim = 1280;
+    let width = img.naturalWidth || img.width;
+    let height = img.naturalHeight || img.height;
+
+    if (width > maxDim || height > maxDim) {
+      if (width > height) {
+        height = Math.round((height * maxDim) / width);
+        width = maxDim;
+      } else {
+        width = Math.round((width * maxDim) / height);
+        height = maxDim;
       }
-    } catch (detectorErr) {
-      // ignore
     }
+
+    canvas.width = width;
+    canvas.height = height;
+    ctx.drawImage(img, 0, 0, width, height);
+
+    const imgData = ctx.getImageData(0, 0, width, height);
+    const luminanceSource = new RGBLuminanceSource(imgData.data, width, height);
+
+    // Pass A: HybridBinarizer
+    try {
+      const bitmap = new BinaryBitmap(new HybridBinarizer(luminanceSource));
+      const res = reader.decode(bitmap);
+      if (res && res.getText()) {
+        URL.revokeObjectURL(objectUrl);
+        return res.getText();
+      }
+    } catch {}
+
+    // Pass B: GlobalHistogramBinarizer
+    try {
+      const bitmap = new BinaryBitmap(new GlobalHistogramBinarizer(luminanceSource));
+      const res = reader.decode(bitmap);
+      if (res && res.getText()) {
+        URL.revokeObjectURL(objectUrl);
+        return res.getText();
+      }
+    } catch {}
+
+    // Pass C: Center Crop (Focused 75% center)
+    try {
+      const cropW = Math.floor(width * 0.75);
+      const cropH = Math.floor(height * 0.5);
+      const cropX = Math.floor((width - cropW) / 2);
+      const cropY = Math.floor((height - cropH) / 2);
+
+      const cropCanvas = document.createElement('canvas');
+      cropCanvas.width = cropW;
+      cropCanvas.height = cropH;
+      const cropCtx = cropCanvas.getContext('2d');
+      if (cropCtx) {
+        cropCtx.drawImage(canvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+        const cropData = cropCtx.getImageData(0, 0, cropW, cropH);
+        const cropLum = new RGBLuminanceSource(cropData.data, cropW, cropH);
+        const cropBitmap = new BinaryBitmap(new HybridBinarizer(cropLum));
+        const res = reader.decode(cropBitmap);
+        if (res && res.getText()) {
+          URL.revokeObjectURL(objectUrl);
+          return res.getText();
+        }
+      }
+    } catch {}
+
+  } catch (err) {
+    console.error("Image decode error:", err);
+  } finally {
+    URL.revokeObjectURL(objectUrl);
   }
 
   return null;
