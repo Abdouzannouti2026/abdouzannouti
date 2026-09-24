@@ -246,10 +246,9 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ settings, document, c
                                     <p>{t('expectedDelivery')} : <span className="font-medium text-neutral-900">{new Date(docExpectedDate).toLocaleDateString(language === 'ar' ? 'ar-MA' : 'fr-FR')}</span></p>
                                 )}
                                 {('purchaseOrderNumber' in document && document.purchaseOrderNumber) && (
-                                <p>{t('purchaseOrderNumber')} : <span className="font-medium text-neutral-900">{document.purchaseOrderNumber}</span></p>
-                            )}
-                            {document.reference && <p>{t('reference')} : <span className="font-medium text-neutral-900">{document.reference}</span></p>}
-                        </div>
+                                    <p>{t('purchaseOrderNumber')} : <span className="font-medium text-neutral-900">{document.purchaseOrderNumber}</span></p>
+                                )}
+                            </div>
                     </div>
                 </header>
 

@@ -93,7 +93,8 @@ const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
 
     return createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 transition-opacity duration-200" aria-modal="true">
-            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md" onClick={onClose}></div>
+            {/* Backdrop: clicking outside is disabled to prevent accidental data loss */}
+            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md"></div>
             
             <div 
                 className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-100 animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]"

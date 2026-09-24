@@ -156,7 +156,8 @@ const ImportClientsModal: React.FC<ImportClientsModalProps> = ({ isOpen, onClose
 
     return createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
-            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md" onClick={onClose}></div>
+            {/* Backdrop: clicking outside is disabled to prevent accidental data loss */}
+            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md"></div>
             <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden border border-slate-200 animate-in fade-in zoom-in duration-200">
                 <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-slate-50/50">
                     <div className="flex items-center gap-3">

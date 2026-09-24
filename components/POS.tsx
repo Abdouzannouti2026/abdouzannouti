@@ -180,6 +180,8 @@ export const POS: React.FC<POSProps> = ({
   const [paymentMethod, setPaymentMethod] = useState<'Espèces' | 'Carte Bancaire' | 'Virement' | 'Chèque' | 'Crédit'>('Espèces');
   const [cashReceived, setCashReceived] = useState<string>('');
   const [paymentNotes, setPaymentNotes] = useState<string>('');
+  const [showDueDate, setShowDueDate] = useState<boolean>(false);
+  const [posDueDate, setPosDueDate] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [autoPrintTicket, setAutoPrintTicket] = useState<boolean>(true);
   const [ticketWidth, setTicketWidth] = useState<'80mm' | '58mm'>(() => {
@@ -200,7 +202,16 @@ export const POS: React.FC<POSProps> = ({
   const [quickItemName, setQuickItemName] = useState('');
   const [quickItemPrice, setQuickItemPrice] = useState<string>('');
   const [quickItemQty, setQuickItemQty] = useState<string>('1');
-  const [quickItemVat, setQuickItemVat] = useState<string>('0');
+  const [quickItemVat, setQuickItemVat] = useState<string>(() => (companySettings?.defaultTva !== undefined ? companySettings.defaultTva.toString() : '0'));
+
+  useEffect(() => {
+    if (companySettings?.defaultTva !== undefined) {
+      setQuickItemVat(companySettings.defaultTva.toString());
+      if (companySettings.defaultTva === 0) {
+        setCartItems(prev => prev.map(item => item.vat !== 0 ? { ...item, vat: 0 } : item));
+      }
+    }
+  }, [companySettings?.defaultTva]);
 
   // References
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -426,6 +437,8 @@ export const POS: React.FC<POSProps> = ({
         };
         return updated;
       } else {
+        const defaultTva = companySettings?.defaultTva !== undefined ? companySettings.defaultTva : 0;
+        const itemVat = (companySettings?.defaultTva === 0) ? 0 : (typeof product.vat === 'number' ? product.vat : defaultTva);
         const newItem: CartItem = {
           id: cartItemId,
           productId: product.id,
@@ -434,7 +447,7 @@ export const POS: React.FC<POSProps> = ({
           description: product.description || '',
           quantity: 1,
           unitPrice: price,
-          vat: product.vat ?? 20,
+          vat: itemVat,
           unit: product.unitOfMeasure || 'U',
           barcode: barcode,
           stockAvailable: stockAvailable,
@@ -478,6 +491,16 @@ export const POS: React.FC<POSProps> = ({
   const handleUpdateUnitPrice = (cartItemId: string, price: number) => {
     const validPrice = Math.max(0, isNaN(price) ? 0 : price);
     setCartItems(prev => prev.map(item => item.id === cartItemId ? { ...item, unitPrice: validPrice } : item));
+  };
+
+  // Update Item VAT
+  const handleUpdateVat = (cartItemId: string, newVat: number) => {
+    setCartItems(prev => prev.map(item => item.id === cartItemId ? { ...item, vat: newVat } : item));
+  };
+
+  // Apply VAT to all items
+  const handleApplyVatToAll = (newVat: number) => {
+    setCartItems(prev => prev.map(item => ({ ...item, vat: newVat })));
   };
 
   // Remove Item
@@ -556,12 +579,12 @@ export const POS: React.FC<POSProps> = ({
       setSearchQuery('');
     } else {
       if (soundEnabled) {
-        // play alert
         playBeepSound();
       }
-      alert(language === 'ar' 
-        ? `لم يتم العثور على أي منتج بالكود: ${scannedCode}`
-        : `Aucun produit trouvé avec le code-barres : ${scannedCode}`);
+      setRecentlyAddedToast({
+        name: language === 'ar' ? `غير متوفر: ${scannedCode}` : `Non trouvé: ${scannedCode}`,
+        time: Date.now()
+      });
     }
   };
 
@@ -660,6 +683,8 @@ export const POS: React.FC<POSProps> = ({
   const handleOpenCheckout = () => {
     if (cartItems.length === 0) return;
     setCashReceived(finalTotalTTC.toFixed(2));
+    setShowDueDate(false);
+    setPosDueDate('');
     setIsCheckoutOpen(true);
   };
 
@@ -678,6 +703,7 @@ export const POS: React.FC<POSProps> = ({
       const todayStr = new Date().toISOString().split('T')[0];
       const paidAmount = paymentMethod === 'Crédit' ? 0 : parsedCashReceived >= finalTotalTTC ? finalTotalTTC : parsedCashReceived;
       const isFullyPaid = paymentMethod !== 'Crédit' && paidAmount >= finalTotalTTC;
+      const effectiveDueDate = showDueDate && posDueDate ? posDueDate : undefined;
 
       // Prepare LineItems
       const cleanLineItems: LineItem[] = cartItems.map(item => ({
@@ -702,10 +728,9 @@ export const POS: React.FC<POSProps> = ({
           clientId: selectedClient.id === 'client-comptoir' ? '' : selectedClient.id,
           clientName: selectedClient.name,
           date: todayStr,
-          dueDate: todayStr,
+          dueDate: effectiveDueDate,
           status: isFullyPaid ? InvoiceStatus.Paid : InvoiceStatus.Pending,
           subject: `Vente Caisse POS #${Date.now().toString().slice(-4)}`,
-          reference: `POS-${todayStr.replace(/-/g, '')}`,
           lineItems: cleanLineItems,
           subTotal: subTotalHT,
           vatAmount: totalVat,
@@ -756,10 +781,9 @@ export const POS: React.FC<POSProps> = ({
           clientId: selectedClient.id === 'client-comptoir' ? '' : selectedClient.id,
           clientName: selectedClient.name,
           date: todayStr,
-          dueDate: todayStr,
+          dueDate: effectiveDueDate,
           status: InvoiceStatus.Paid,
           subject: `Ticket de Caisse #${ticketNum}`,
-          reference: `TK-${todayStr.replace(/-/g, '')}`,
           lineItems: cleanLineItems,
           subTotal: subTotalHT,
           vatAmount: totalVat,
@@ -801,6 +825,8 @@ export const POS: React.FC<POSProps> = ({
       setGlobalDiscountValue(0);
       setPaymentNotes('');
       setCashReceived('');
+      setShowDueDate(false);
+      setPosDueDate('');
 
       if (autoPrintTicket) {
         setThermalModalInvoice(finalDoc);
@@ -1333,11 +1359,18 @@ export const POS: React.FC<POSProps> = ({
                         <span>
                           {item.unitPrice.toLocaleString(language === 'ar' ? 'ar-MA' : 'fr-FR', { minimumFractionDigits: 2 })} {currency}
                         </span>
-                        {item.vat !== undefined && (
-                          <span className="text-[10px] bg-slate-200/60 px-1 rounded text-slate-600">
-                            {item.vat}%
-                          </span>
-                        )}
+                        <select
+                          value={item.vat !== undefined ? item.vat : (companySettings?.defaultTva ?? 0)}
+                          onChange={(e) => handleUpdateVat(item.id, parseFloat(e.target.value) || 0)}
+                          className="text-[10px] bg-slate-200/70 hover:bg-slate-300/80 px-1 py-0.2 rounded text-slate-700 font-bold border-0 cursor-pointer focus:ring-1 focus:ring-emerald-500 transition-colors"
+                          title={language === 'ar' ? 'تغيير نسبة الضريبة' : 'Modifier la TVA de cette ligne'}
+                        >
+                          <option value="0">0%</option>
+                          <option value="7">7%</option>
+                          <option value="10">10%</option>
+                          <option value="14">14%</option>
+                          <option value="20">20%</option>
+                        </select>
                       </div>
                     </div>
 
@@ -1444,8 +1477,30 @@ export const POS: React.FC<POSProps> = ({
                 <span>Sous-total HT :</span>
                 <span>{subTotalHT.toLocaleString(language === 'ar' ? 'ar-MA' : 'fr-FR', { minimumFractionDigits: 2 })} {currency}</span>
               </div>
-              <div className="flex justify-between text-slate-500 font-medium">
-                <span>Total TVA :</span>
+              <div className="flex justify-between items-center text-slate-500 font-medium">
+                <div className="flex items-center gap-1.5">
+                  <span>Total TVA :</span>
+                  {cartItems.length > 0 && totalVat > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => handleApplyVatToAll(0)}
+                      className="text-[10px] text-emerald-600 hover:text-emerald-700 font-bold underline cursor-pointer"
+                      title={language === 'ar' ? 'تطبيق 0% على جميع العناصر' : 'Appliquer 0% à tous les articles'}
+                    >
+                      (0% TVA)
+                    </button>
+                  )}
+                  {cartItems.length > 0 && totalVat === 0 && (companySettings?.defaultTva ?? 0) > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => handleApplyVatToAll(companySettings?.defaultTva ?? 20)}
+                      className="text-[10px] text-emerald-600 hover:text-emerald-700 font-bold underline cursor-pointer"
+                      title={language === 'ar' ? 'تطبيق الضريبة الافتراضية على جميع العناصر' : 'Appliquer TVA par défaut'}
+                    >
+                      ({companySettings?.defaultTva}%)
+                    </button>
+                  )}
+                </div>
                 <span>{totalVat.toLocaleString(language === 'ar' ? 'ar-MA' : 'fr-FR', { minimumFractionDigits: 2 })} {currency}</span>
               </div>
               {discountAmount > 0 && (
@@ -1718,6 +1773,39 @@ export const POS: React.FC<POSProps> = ({
                 />
               </div>
 
+              {/* Optional Due Date Field */}
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Calendar size={16} className="text-slate-600" />
+                    <span className="text-xs font-bold text-slate-700">
+                      {language === 'ar' ? 'تاريخ الاستحقاق (اختياري)' : "Date d'échéance (Optionnelle)"}
+                    </span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={showDueDate}
+                    onChange={(e) => {
+                      setShowDueDate(e.target.checked);
+                      if (e.target.checked && !posDueDate) {
+                        setPosDueDate(new Date().toISOString().split('T')[0]);
+                      }
+                    }}
+                    className="h-4 w-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500"
+                  />
+                </div>
+                {showDueDate && (
+                  <div className="mt-2.5 pt-2.5 border-t border-slate-200">
+                    <input
+                      type="date"
+                      value={posDueDate}
+                      onChange={(e) => setPosDueDate(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                )}
+              </div>
+
               {/* Auto print Ticket Checkbox */}
               <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-200">
                 <div className="flex items-center gap-2">
@@ -1808,17 +1896,17 @@ export const POS: React.FC<POSProps> = ({
               </div>
               <h3 className="text-xl font-black text-slate-900">
                 {lastSaleWasInvoice 
-                  ? (language === 'ar' ? 'تم إنشاء الفاتورة بنجاح !' : 'Facture Officielle Créée !')
+                  ? (language === 'ar' ? 'تم إنشاء الوصل بنجاح !' : 'Bon Officiel Créé !')
                   : (language === 'ar' ? 'تم تسجيل البيع (تيكيت كاسة) !' : 'Vente Enregistrée (Ticket Seul) !')}
               </h3>
               <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
                 {lastSaleWasInvoice 
                   ? (language === 'ar' 
-                      ? `تمت إضافة الفاتورة #${lastInvoice.documentId || lastInvoice.id} إلى لائحة الفواتير الرسمية الخاصة بك.` 
-                      : `La Facture #${lastInvoice.documentId || lastInvoice.id} est maintenant consultable dans votre liste des Factures.`)
+                      ? `تمت إضافة الوصل #${lastInvoice.documentId || lastInvoice.id} إلى لائحة الوصولات الخاصة بك.` 
+                      : `Le Bon #${lastInvoice.documentId || lastInvoice.id} est maintenant consultable dans votre liste des Bons.`)
                   : (language === 'ar'
-                      ? `تم خصم المخزون وتسجيل التيكيت #${lastInvoice.documentId || lastInvoice.id}. لم يتم إنشاء أي فاتورة في لائحة الفواتير.`
-                      : `Stock mis à jour avec le ticket #${lastInvoice.documentId || lastInvoice.id}. Aucune facture n'a été ajoutée à la liste des factures.`)}
+                      ? `تم خصم المخزون وتسجيل التيكيت #${lastInvoice.documentId || lastInvoice.id}. لم يتم إنشاء أي وصل في لائحة الوصولات.`
+                      : `Stock mis à jour avec le ticket #${lastInvoice.documentId || lastInvoice.id}. Aucun bon n'a été ajouté à la liste des bons.`)}
               </p>
               <p className="text-2xl font-black text-slate-900 mt-2">
                 {lastInvoice.amount.toLocaleString(language === 'ar' ? 'ar-MA' : 'fr-FR', { minimumFractionDigits: 2 })} {currency}
@@ -1848,7 +1936,7 @@ export const POS: React.FC<POSProps> = ({
                   className="flex items-center justify-center gap-2 py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs shadow-sm transition-all"
                 >
                   <FileText size={16} />
-                  <span>Voir Facture A4</span>
+                  <span>Voir Bon A4</span>
                 </button>
               )}
             </div>
@@ -1957,7 +2045,7 @@ export const POS: React.FC<POSProps> = ({
                         </span>
                         {sale.isInvoice ? (
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800">
-                            📄 Facture
+                            📄 Bon
                           </span>
                         ) : (
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-800">
@@ -1996,7 +2084,7 @@ export const POS: React.FC<POSProps> = ({
                             setPreviewInvoice(sale.originalDoc);
                           }}
                           className="p-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl transition-colors"
-                          title="Aperçu Facture PDF"
+                          title="Aperçu Bon PDF"
                         >
                           <Eye size={16} />
                         </button>
@@ -2157,9 +2245,9 @@ export const POS: React.FC<POSProps> = ({
         onClose={() => setIsScannerOpen(false)}
         onScan={(code) => {
           handleBarcodeScanned(code);
-          setIsScannerOpen(false);
         }}
-        title="Scanner le code-barres de l'article"
+        title={language === 'ar' ? 'مسح باركود المنتج' : "Scanner le code-barres de l'article"}
+        continuous={true}
       />
 
       {/* ================= 10. NEW CLIENT MODAL ================= */}

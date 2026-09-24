@@ -27,7 +27,8 @@ const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({ isOpen, onClose, 
 
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
-      <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md" onClick={onClose}></div>
+      {/* Backdrop: clicking outside is disabled to prevent accidental data loss */}
+      <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md"></div>
       <div className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header - Screen only */}
         <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800 print:hidden">
@@ -112,7 +113,7 @@ const BarcodePrintModal: React.FC<BarcodePrintModalProps> = ({ isOpen, onClose, 
 
                 {showPrice && (
                   <div className="text-[11px] font-black text-emerald-700 mt-1">
-                    {formatCurrency(roundPrice(product.salePrice * (1 + (product.vat || 20) / 100)))} <span className="text-[9px]">TTC</span>
+                    {formatCurrency(roundPrice(product.salePrice * (1 + (product.vat !== undefined ? product.vat : 0) / 100)))} <span className="text-[9px]">TTC</span>
                   </div>
                 )}
               </div>

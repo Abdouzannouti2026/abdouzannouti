@@ -664,7 +664,11 @@ const MainContent: React.FC = () => {
             const existingInvoice = invoices.find(i => i.id === id);
             if (!existingInvoice) return;
             const { initialPayment, ...invoiceFields } = invoiceData;
-            const updatedInvoice: Invoice = { ...existingInvoice, ...invoiceFields };
+            const updatedInvoice: Invoice = { 
+                ...existingInvoice, 
+                ...invoiceFields,
+                date: invoiceFields.date || existingInvoice.date
+            };
             updatedInvoice.id = id; 
 
             // Handle stock changes

@@ -62,6 +62,29 @@ const CreatePurchaseOrderModal: React.FC<CreatePurchaseOrderModalProps> = ({ isO
     const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>('percentage');
     const [discountValue, setDiscountValue] = useState<string>('');
 
+    const normalizeDateForInput = (d?: string | Date | null): string => {
+        if (!d) return '';
+        if (typeof d === 'string') {
+            const trimmed = d.trim();
+            if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+            if (trimmed.includes('T')) return trimmed.split('T')[0];
+            if (trimmed.includes(' ')) return trimmed.split(' ')[0];
+            if (/^\d{2}\/\d{2}\/\d{4}$/.test(trimmed)) {
+                const [day, month, year] = trimmed.split('/');
+                return `${year}-${month}-${day}`;
+            }
+            const parsed = new Date(trimmed);
+            if (!isNaN(parsed.getTime())) {
+                return parsed.toISOString().split('T')[0];
+            }
+            return trimmed;
+        }
+        if (d instanceof Date && !isNaN(d.getTime())) {
+            return d.toISOString().split('T')[0];
+        }
+        return '';
+    };
+
     const stripHtml = (html?: string) => {
         if (!html) return '';
         const tempDiv = document.createElement("div");
@@ -75,13 +98,15 @@ const CreatePurchaseOrderModal: React.FC<CreatePurchaseOrderModalProps> = ({ isO
             if (orderToEdit) {
                 setSupplierId(orderToEdit.supplierId);
                 setDocumentId(orderToEdit.documentId || '');
-                setDate(orderToEdit.date);
+                const cleanDate = normalizeDateForInput(orderToEdit.date);
+                setDate(cleanDate);
                 
-                setDueDate(orderToEdit.dueDate || orderToEdit.lineItems[0]?.dueDate || '');
+                const rawDueDate = orderToEdit.dueDate || orderToEdit.lineItems[0]?.dueDate || '';
+                setDueDate(rawDueDate ? normalizeDateForInput(rawDueDate) : '');
                 setAmountPaid(orderToEdit.amountPaid ? formatDecimalForInput(orderToEdit.amountPaid, language) : '0');
 
                 const initialExpectedDate = orderToEdit.expectedDate || orderToEdit.lineItems[0]?.expectedDate || '';
-                setExpectedDate(initialExpectedDate);
+                setExpectedDate(initialExpectedDate ? normalizeDateForInput(initialExpectedDate) : '');
                 setShowExpectedDateField(!!initialExpectedDate);
 
                 const initialSubject = orderToEdit.subject || orderToEdit.lineItems[0]?.subject || '';
@@ -170,7 +195,8 @@ const CreatePurchaseOrderModal: React.FC<CreatePurchaseOrderModalProps> = ({ isO
                 setTempDesc(stripHtml(product.description || ''));
                 const priceToDisplay = isModeTTC ? roundPrice(product.purchasePrice * (1 + product.vat / 100)) : product.purchasePrice;
                 setTempPrice(formatDecimalForInput(priceToDisplay, language));
-                setTempVat(product.vat);
+                const itemVat = (companySettings?.defaultTva === 0) ? 0 : (typeof product.vat === 'number' ? product.vat : (companySettings?.defaultTva ?? 20));
+                setTempVat(itemVat);
                 setTempProductCode(product.productCode);
                 setTempUnit(product.unitOfMeasure || '');
             }
@@ -313,14 +339,16 @@ const CreatePurchaseOrderModal: React.FC<CreatePurchaseOrderModalProps> = ({ isO
             };
         }
 
+        const effectiveDate = date ? normalizeDateForInput(date) : (orderToEdit?.date ? normalizeDateForInput(orderToEdit.date) : new Date().toISOString().split('T')[0]);
+
         const orderData = {
             documentId: documentId || undefined,
             supplierId, 
             supplierName: supplierNameDisplay, 
-            date, 
-            dueDate: dueDate || undefined,
+            date: effectiveDate, 
+            dueDate: dueDate ? normalizeDateForInput(dueDate) : undefined,
             amountPaid: parseDecimalInput(amountPaid) || 0,
-            expectedDate: showExpectedDateField ? expectedDate : undefined, 
+            expectedDate: showExpectedDateField && expectedDate ? normalizeDateForInput(expectedDate) : undefined, 
             subject: showSubjectField ? subject : undefined, 
             paymentMethod: showPaymentMethodField ? paymentMethod : undefined,
             checkNumber: (showPaymentMethodField && paymentMethod === 'Chèque') ? checkNumber : undefined,
@@ -350,7 +378,8 @@ const CreatePurchaseOrderModal: React.FC<CreatePurchaseOrderModalProps> = ({ isO
 
     return createPortal(
         <div className={`fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 transition-opacity duration-200 ${isVisible ? 'opacity-100' : 'opacity-0'}`} aria-modal="true">
-            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md" onClick={handleClose}></div>
+            {/* Backdrop: clicking outside is disabled to prevent accidental data loss */}
+            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md"></div>
             <div className={`relative w-full h-full md:h-auto md:max-h-[92vh] md:max-w-6xl bg-white rounded-2xl shadow-2xl border border-slate-100 transition-all duration-200 ease-out flex flex-col overflow-hidden ${isVisible ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}`}>
                 
                 {/* Header */}
@@ -746,7 +775,7 @@ const CreatePurchaseOrderModal: React.FC<CreatePurchaseOrderModalProps> = ({ isO
                                     </thead>
                                     <tbody className="bg-white divide-y divide-slate-100">
                                         {(lineItems || []).map(item => {
-                                            const itemVat = typeof item.vat === 'number' ? item.vat : 20;
+                                            const itemVat = typeof item.vat === 'number' ? item.vat : (companySettings?.defaultTva ?? 20);
                                             const displayPrice = isModeTTC ? roundPrice(item.unitPrice * (1 + itemVat/100)) : item.unitPrice;
                                             const displayLineTotal = (item.quantity || 0) * getLineMultiplier(item) * (displayPrice || 0);
                                             
@@ -865,7 +894,7 @@ const CreatePurchaseOrderModal: React.FC<CreatePurchaseOrderModalProps> = ({ isO
                             {/* Mobile Card View */}
                             <div className="md:hidden space-y-4">
                                 {(lineItems || []).map(item => {
-                                    const itemVat = typeof item.vat === 'number' ? item.vat : 20;
+                                    const itemVat = typeof item.vat === 'number' ? item.vat : (companySettings?.defaultTva ?? 20);
                                     const displayPrice = isModeTTC ? roundPrice(item.unitPrice * (1 + itemVat/100)) : item.unitPrice;
                                     const displayLineTotal = (item.quantity || 0) * getLineMultiplier(item) * (displayPrice || 0);
                                     

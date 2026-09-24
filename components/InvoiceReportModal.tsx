@@ -124,7 +124,7 @@ const InvoiceReportModal: React.FC<InvoiceReportModalProps> = ({
         printWindow.document.write(`
             <html>
                 <head>
-                    <title>Etat Global des Factures</title>
+                    <title>Etat Global des Bons</title>
                     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
                     <style>
                         body {
@@ -241,7 +241,7 @@ const InvoiceReportModal: React.FC<InvoiceReportModalProps> = ({
                     <table class="w-full text-left border-collapse border border-slate-300 text-xs">
                         <thead>
                             <tr class="bg-slate-100 border-b border-slate-300 font-bold text-slate-700 uppercase">
-                                <th class="border border-slate-300 px-3 py-2">Date facture</th>
+                                <th class="border border-slate-300 px-3 py-2">Date bon</th>
                                 <th class="border border-slate-300 px-3 py-2">Ref</th>
                                 <th class="border border-slate-300 px-3 py-2">Client</th>
                                 <th class="border border-slate-300 px-3 py-2 text-right">Total HT</th>
@@ -290,7 +290,8 @@ const InvoiceReportModal: React.FC<InvoiceReportModalProps> = ({
 
     return createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
-            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md" onClick={onClose}></div>
+            {/* Backdrop: clicking outside is disabled to prevent accidental data loss */}
+            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md"></div>
             <div className="relative bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-6xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                 {/* Modal Header */}
                 <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50/50">
@@ -299,8 +300,8 @@ const InvoiceReportModal: React.FC<InvoiceReportModalProps> = ({
                             <FileText size={18} />
                         </div>
                         <div>
-                            <h2 className="text-base font-bold text-slate-900">Etat Global des Factures</h2>
-                            <p className="text-xs text-slate-500">Générez et imprimez un rapport professionnel de facturation</p>
+                            <h2 className="text-base font-bold text-slate-900">Etat Global des Bons</h2>
+                            <p className="text-xs text-slate-500">Générez et imprimez un rapport professionnel des bons de vente</p>
                         </div>
                     </div>
                     <button 
@@ -386,14 +387,14 @@ const InvoiceReportModal: React.FC<InvoiceReportModalProps> = ({
                     {filteredInvoices.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-12 text-slate-400">
                             <FileText size={40} className="stroke-1 mb-3 text-slate-300" />
-                            <p className="text-xs font-semibold">Aucune facture trouvée pour la période sélectionnée.</p>
+                            <p className="text-xs font-semibold">Aucun bon trouvé pour la période sélectionnée.</p>
                         </div>
                     ) : (
                         <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
                             <table className="w-full text-left border-collapse text-xs">
                                 <thead>
                                     <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-700 uppercase tracking-wider text-[11px]">
-                                        <th className="px-4 py-3">Date facture</th>
+                                        <th className="px-4 py-3">Date bon</th>
                                         <th className="px-4 py-3">Ref</th>
                                         <th className="px-4 py-3">Client</th>
                                         <th className="px-4 py-3 text-right">Total HT</th>

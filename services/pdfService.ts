@@ -435,7 +435,10 @@ export const generateDocumentHTML = (
   if (docType === "Facture") {
     txtAmountInWords = txtAmountInWords.replace(
       "le présent document",
+      "le présent bon",
+    ).replace(
       "la présente facture",
+      "le présent bon",
     );
   } else {
     txtAmountInWords = txtAmountInWords.replace(
@@ -478,15 +481,15 @@ export const generateDocumentHTML = (
   const isDeliveryNote = docType === "Bon de Livraison";
 
   // Document Titles translation
-  let titleDisplay = docType.toUpperCase();
+  let titleDisplay = docType === "Facture" ? "BON" : docType.toUpperCase();
   if (lang === "es") {
-    if (docType === "Facture") titleDisplay = "FACTURA";
+    if (docType === "Facture") titleDisplay = "BON";
     else if (docType === "Devis") titleDisplay = "PRESUPUESTO";
     else if (docType === "Bon de Livraison") titleDisplay = "ALBARÁN";
     else if (docType === "Bon de Commande") titleDisplay = "PEDIDO";
     else if (docType === "Avoir") titleDisplay = "NOTA DE CRÉDITO";
   } else if (lang === "en") {
-    if (docType === "Facture") titleDisplay = "INVOICE";
+    if (docType === "Facture") titleDisplay = "BON";
     else if (docType === "Devis") titleDisplay = "QUOTE";
     else if (docType === "Bon de Livraison") titleDisplay = "DELIVERY NOTE";
     else if (docType === "Bon de Commande") titleDisplay = "PURCHASE ORDER";
@@ -1069,7 +1072,6 @@ export const generateDocumentHTML = (
             ${extraDateLabel ? `<div>${extraDateLabel} : <b>${extraDateValue}</b></div>` : ""}
             ${secondDateLabel ? `<div>${secondDateLabel} : <b>${secondDateValue}</b></div>` : ""}
             ${doc.purchaseOrderNumber ? `<div>${dict.purchaseOrderNumber || "N° BC"} : <b>${doc.purchaseOrderNumber}</b></div>` : ""}
-            ${doc.reference ? `<div>${dict.reference || "Réf"} : <b>${doc.reference}</b></div>` : ""}
             ${doc.invoiceId ? `<div>${lang === "es" ? "Ref. Factura" : lang === "en" ? "Invoice Ref" : "Réf. Facture"} : <b>${doc.invoiceId}</b></div>` : ""}
         </div>
     `;

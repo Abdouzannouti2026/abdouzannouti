@@ -117,10 +117,9 @@ export const ThermalTicketModal: React.FC<ThermalTicketModalProps> = ({
 
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex flex-col sm:items-center sm:justify-center p-0 sm:p-4 md:p-6 overflow-hidden">
-      {/* Backdrop */}
+      {/* Backdrop: clicking outside is disabled to prevent accidental dismiss */}
       <div 
         className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm transition-opacity" 
-        onClick={onClose}
       />
 
       {/* Dialog Box */}

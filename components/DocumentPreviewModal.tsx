@@ -140,7 +140,8 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
 
     return createPortal(
         <div className={`fixed inset-0 z-[9999] flex items-center justify-center p-4 transition-opacity duration-200 ${isVisible ? 'opacity-100' : 'opacity-0'}`} aria-modal="true">
-            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md" onClick={handleClose}></div>
+            {/* Backdrop: clicking outside is disabled to prevent accidental data loss */}
+            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md"></div>
             
             <div className={`relative w-full max-w-5xl h-[90vh] flex flex-col bg-slate-100 rounded-2xl shadow-2xl border border-slate-100 overflow-hidden transition-all duration-300 ease-out transform ${isVisible ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}`}>
                 
@@ -148,7 +149,7 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
                 <div className={`flex items-center justify-between p-5 bg-white border-b border-slate-100 gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
                     <div className={`flex flex-col truncate ${isRTL ? 'text-right' : ''}`}>
                         <h3 className="text-base font-bold text-slate-900 leading-tight truncate">
-                            {type} #{doc.documentId || doc.id}
+                            {type === 'Facture' ? (language === 'ar' ? 'وصل' : 'Bon') : type} #{doc.documentId || doc.id}
                         </h3>
                         <p className="text-xs text-slate-500 font-medium truncate">
                             {effectiveRecipient.name}

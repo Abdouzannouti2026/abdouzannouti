@@ -85,7 +85,8 @@ const AddClientModal: React.FC<AddClientModalProps> = ({ isOpen, onClose, onSave
 
     return createPortal(
         <div className={`fixed inset-0 z-[9999] flex items-center justify-center p-4 transition-opacity duration-200 ${isVisible ? 'opacity-100' : 'opacity-0'}`} aria-modal="true">
-            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md" onClick={handleClose}></div>
+            {/* Backdrop: clicking outside is disabled to prevent accidental data loss */}
+            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md"></div>
             <div className={`relative w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-100 transition-all duration-200 ease-in-out flex flex-col max-h-[90vh] overflow-hidden ${isVisible ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}`}>
                 
                 {/* Modal Header */}

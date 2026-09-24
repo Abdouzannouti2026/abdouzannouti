@@ -506,7 +506,7 @@ const Invoices: React.FC<InvoicesProps> = ({ invoices, onUpdateInvoiceStatus, on
                                     <td colSpan={7} className="text-center py-16 px-6">
                                         <div className="flex flex-col items-center justify-center">
                                             <FileText className="h-10 w-10 text-slate-300 mb-3" />
-                                            <h3 className="text-sm font-bold text-slate-800">Aucune facture trouvée</h3>
+                                            <h3 className="text-sm font-bold text-slate-800">{language === 'ar' ? 'لم يتم العثور على أي وصل' : 'Aucun bon trouvé'}</h3>
                                         </div>
                                     </td>
                                 </tr>
@@ -562,7 +562,7 @@ const Invoices: React.FC<InvoicesProps> = ({ invoices, onUpdateInvoiceStatus, on
                     ) : (
                         <div className="text-center py-12 px-4">
                             <FileText className="h-10 w-10 text-slate-300 mx-auto mb-3" />
-                            <h3 className="text-sm font-bold text-slate-800">Aucune facture trouvée</h3>
+                            <h3 className="text-sm font-bold text-slate-800">{language === 'ar' ? 'لم يتم العثور على أي وصل' : 'Aucun bon trouvé'}</h3>
                         </div>
                     )}
                 </div>
@@ -589,7 +589,11 @@ const Invoices: React.FC<InvoicesProps> = ({ invoices, onUpdateInvoiceStatus, on
                         <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
                             <div>
                                 <p className="text-xs font-medium text-slate-500">
-                                    Affichage de <span className="font-bold text-slate-800">{startIndex + 1}</span> à <span className="font-bold text-slate-800">{Math.min(startIndex + itemsPerPage, filteredInvoices.length)}</span> sur <span className="font-bold text-slate-800">{filteredInvoices.length}</span> factures
+                                    {language === 'ar' ? (
+                                        <>عرض <span className="font-bold text-slate-800">{startIndex + 1}</span> إلى <span className="font-bold text-slate-800">{Math.min(startIndex + itemsPerPage, filteredInvoices.length)}</span> من <span className="font-bold text-slate-800">{filteredInvoices.length}</span> وصل</>
+                                    ) : (
+                                        <>Affichage de <span className="font-bold text-slate-800">{startIndex + 1}</span> à <span className="font-bold text-slate-800">{Math.min(startIndex + itemsPerPage, filteredInvoices.length)}</span> sur <span className="font-bold text-slate-800">{filteredInvoices.length}</span> bons</>
+                                    )}
                                 </p>
                             </div>
                             <div>

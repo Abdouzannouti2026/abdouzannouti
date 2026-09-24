@@ -62,6 +62,29 @@ const CreateQuoteModal: React.FC<CreateQuoteModalProps> = ({ isOpen, onClose, on
     const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>('percentage');
     const [discountValue, setDiscountValue] = useState<string>('');
 
+    const normalizeDateForInput = (d?: string | Date | null): string => {
+        if (!d) return '';
+        if (typeof d === 'string') {
+            const trimmed = d.trim();
+            if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+            if (trimmed.includes('T')) return trimmed.split('T')[0];
+            if (trimmed.includes(' ')) return trimmed.split(' ')[0];
+            if (/^\d{2}\/\d{2}\/\d{4}$/.test(trimmed)) {
+                const [day, month, year] = trimmed.split('/');
+                return `${year}-${month}-${day}`;
+            }
+            const parsed = new Date(trimmed);
+            if (!isNaN(parsed.getTime())) {
+                return parsed.toISOString().split('T')[0];
+            }
+            return trimmed;
+        }
+        if (d instanceof Date && !isNaN(d.getTime())) {
+            return d.toISOString().split('T')[0];
+        }
+        return '';
+    };
+
     const stripHtml = (html?: string) => {
         if (!html) return '';
         const tempDiv = document.createElement("div");
@@ -75,9 +98,13 @@ const CreateQuoteModal: React.FC<CreateQuoteModalProps> = ({ isOpen, onClose, on
             if (quoteToEdit) {
                 setClientId(quoteToEdit.clientId);
                 setDocumentId(quoteToEdit.documentId || '');
-                setDate(quoteToEdit.date);
+                const cleanDate = normalizeDateForInput(quoteToEdit.date);
+                setDate(cleanDate);
                 const initialExpiryDate = quoteToEdit.expiryDate || quoteToEdit.lineItems[0]?.expiryDate || '';
-                setExpiryDate(initialExpiryDate || new Date(new Date(quoteToEdit.date).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
+                const cleanExpiry = initialExpiryDate 
+                    ? normalizeDateForInput(initialExpiryDate) 
+                    : (cleanDate ? new Date(new Date(cleanDate).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] : '');
+                setExpiryDate(cleanExpiry);
                 setShowExpiryDateField(!!initialExpiryDate);
                 
                 const initialSubject = quoteToEdit.subject || quoteToEdit.lineItems[0]?.subject || '';
@@ -166,7 +193,8 @@ const CreateQuoteModal: React.FC<CreateQuoteModalProps> = ({ isOpen, onClose, on
                 setTempDesc(stripHtml(product.description || ''));
                 const priceToDisplay = isModeTTC ? roundPrice(product.salePrice * (1 + product.vat / 100)) : product.salePrice;
                 setTempPrice(formatDecimalForInput(priceToDisplay, language));
-                setTempVat(product.vat);
+                const itemVat = (companySettings?.defaultTva === 0) ? 0 : (typeof product.vat === 'number' ? product.vat : (companySettings?.defaultTva ?? 20));
+                setTempVat(itemVat);
                 setTempProductCode(product.productCode);
                 setTempUnit(product.unitOfMeasure || '');
             }
@@ -303,10 +331,13 @@ const CreateQuoteModal: React.FC<CreateQuoteModalProps> = ({ isOpen, onClose, on
             };
         }
 
+        const effectiveDate = date ? normalizeDateForInput(date) : (quoteToEdit?.date ? normalizeDateForInput(quoteToEdit.date) : new Date().toISOString().split('T')[0]);
+
         const quoteData = {
             documentId: documentId || undefined,
-            clientId, clientName: clientNameDisplay, date, 
-            expiryDate: showExpiryDateField ? expiryDate : undefined, 
+            clientId, clientName: clientNameDisplay, 
+            date: effectiveDate, 
+            expiryDate: showExpiryDateField && expiryDate ? normalizeDateForInput(expiryDate) : undefined, 
             subject: showSubjectField ? subject : undefined, 
             paymentMethod: showPaymentMethodField ? paymentMethod : undefined,
             checkNumber: (showPaymentMethodField && paymentMethod === 'Chèque') ? checkNumber : undefined,
@@ -334,7 +365,8 @@ const CreateQuoteModal: React.FC<CreateQuoteModalProps> = ({ isOpen, onClose, on
 
     return createPortal(
         <div className={`fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 transition-opacity duration-200 ${isVisible ? 'opacity-100' : 'opacity-0'}`} aria-modal="true">
-            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md" onClick={handleClose}></div>
+            {/* Backdrop: clicking outside is disabled to prevent accidental data loss */}
+            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md"></div>
             <div className={`relative w-full h-full md:h-auto md:max-h-[92vh] md:max-w-6xl bg-white rounded-2xl shadow-2xl border border-slate-100 transition-all duration-200 ease-out flex flex-col overflow-hidden ${isVisible ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}`}>
                 
                 {/* Header */}
@@ -746,7 +778,7 @@ const CreateQuoteModal: React.FC<CreateQuoteModalProps> = ({ isOpen, onClose, on
                                     </thead>
                                     <tbody className="bg-white divide-y divide-slate-100">
                                         {(lineItems || []).map(item => {
-                                            const itemVat = typeof item.vat === 'number' ? item.vat : 20;
+                                            const itemVat = typeof item.vat === 'number' ? item.vat : (companySettings?.defaultTva ?? 20);
                                             const displayPrice = isModeTTC ? roundPrice(item.unitPrice * (1 + itemVat/100)) : item.unitPrice;
                                             const displayLineTotal = (item.quantity || 0) * getLineMultiplier(item) * (displayPrice || 0);
                                             
@@ -857,7 +889,7 @@ const CreateQuoteModal: React.FC<CreateQuoteModalProps> = ({ isOpen, onClose, on
                             {/* Mobile Card View */}
                             <div className="md:hidden space-y-4">
                                 {(lineItems || []).map(item => {
-                                    const itemVat = typeof item.vat === 'number' ? item.vat : 20;
+                                    const itemVat = typeof item.vat === 'number' ? item.vat : (companySettings?.defaultTva ?? 20);
                                     const displayPrice = isModeTTC ? roundPrice(item.unitPrice * (1 + itemVat/100)) : item.unitPrice;
                                     const displayLineTotal = (item.quantity || 0) * getLineMultiplier(item) * (displayPrice || 0);
                                     

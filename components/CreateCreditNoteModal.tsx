@@ -76,6 +76,29 @@ const CreateCreditNoteModal: React.FC<CreateCreditNoteModalProps> = ({
     const [status, setStatus] = useState<CreditNoteStatus>(CreditNoteStatus.Validated);
     const [returnToStock, setReturnToStock] = useState<boolean>(true);
 
+    const normalizeDateForInput = (d?: string | Date | null): string => {
+        if (!d) return '';
+        if (typeof d === 'string') {
+            const trimmed = d.trim();
+            if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+            if (trimmed.includes('T')) return trimmed.split('T')[0];
+            if (trimmed.includes(' ')) return trimmed.split(' ')[0];
+            if (/^\d{2}\/\d{2}\/\d{4}$/.test(trimmed)) {
+                const [day, month, year] = trimmed.split('/');
+                return `${year}-${month}-${day}`;
+            }
+            const parsed = new Date(trimmed);
+            if (!isNaN(parsed.getTime())) {
+                return parsed.toISOString().split('T')[0];
+            }
+            return trimmed;
+        }
+        if (d instanceof Date && !isNaN(d.getTime())) {
+            return d.toISOString().split('T')[0];
+        }
+        return '';
+    };
+
     const stripHtml = (html?: string) => {
         if (!html) return '';
         const tempDiv = document.createElement("div");
@@ -117,7 +140,8 @@ const CreateCreditNoteModal: React.FC<CreateCreditNoteModalProps> = ({
                 setSelectedInvoiceId(creditNoteToEdit.invoiceId || '');
                 setClientId(creditNoteToEdit.clientId);
                 setDocumentId(creditNoteToEdit.documentId || '');
-                setDate(creditNoteToEdit.date);
+                const cleanDate = normalizeDateForInput(creditNoteToEdit.date);
+                setDate(cleanDate);
                 
                 const initialReason = creditNoteToEdit.subject || creditNoteToEdit.lineItems[0]?.subject || '';
                 setReason(initialReason);
@@ -206,7 +230,8 @@ const CreateCreditNoteModal: React.FC<CreateCreditNoteModalProps> = ({
                 setTempDesc(stripHtml(product.description || ''));
                 const priceToDisplay = isModeTTC ? roundPrice(product.salePrice * (1 + product.vat / 100)) : product.salePrice;
                 setTempPrice(priceToDisplay);
-                setTempVat(product.vat);
+                const itemVat = (companySettings?.defaultTva === 0) ? 0 : (typeof product.vat === 'number' ? product.vat : (companySettings?.defaultTva ?? 20));
+                setTempVat(itemVat);
                 setTempProductCode(product.productCode);
                 setTempUnit(product.unitOfMeasure || '');
             }
@@ -344,12 +369,13 @@ const CreateCreditNoteModal: React.FC<CreateCreditNoteModalProps> = ({
         }
 
         const resolvedInvoiceId = selectedInvoiceId || creditNoteToEdit?.invoiceId || (prefilledInvoice?.documentId || prefilledInvoice?.id) || undefined;
+        const effectiveDate = date ? normalizeDateForInput(date) : (creditNoteToEdit?.date ? normalizeDateForInput(creditNoteToEdit.date) : new Date().toISOString().split('T')[0]);
 
         const creditNoteData: any = {
             documentId: documentId || undefined,
             clientId, 
             clientName: clientNameDisplay, 
-            date, 
+            date: effectiveDate, 
             subject: showSubjectField ? reason : undefined, 
             paymentMethod: showPaymentMethodField ? paymentMethod : undefined, 
             checkNumber: (showPaymentMethodField && paymentMethod === 'Chèque') ? checkNumber : undefined,
@@ -381,7 +407,8 @@ const CreateCreditNoteModal: React.FC<CreateCreditNoteModalProps> = ({
 
     return createPortal(
         <div className={`fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 transition-opacity duration-200 ${isVisible ? 'opacity-100' : 'opacity-0'}`} aria-modal="true">
-            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md" onClick={handleClose}></div>
+            {/* Backdrop: clicking outside is disabled to prevent accidental data loss */}
+            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md"></div>
             <div className={`relative w-full h-full md:h-auto md:max-h-[92vh] md:max-w-6xl bg-white rounded-2xl shadow-2xl border border-slate-100 transition-all duration-200 ease-out flex flex-col overflow-hidden ${isVisible ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}`}>
                 
                 {/* Header */}

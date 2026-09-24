@@ -164,7 +164,8 @@ const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClose, onSa
 
     return createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 transition-opacity duration-200" aria-modal="true">
-            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md" onClick={onClose}></div>
+            {/* Backdrop: clicking outside is disabled to prevent accidental data loss */}
+            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md"></div>
             <div className="relative w-full max-w-2xl max-h-[90vh] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-slate-100 animate-in fade-in zoom-in-95 duration-200">
                 {/* Modal Header */}
                 <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50/50">

@@ -69,6 +69,29 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
     const [stockError, setStockError] = useState<string | null>(null);
     const [saveError, setSaveError] = useState<string | null>(null);
 
+    const normalizeDateForInput = (d?: string | Date | null): string => {
+        if (!d) return '';
+        if (typeof d === 'string') {
+            const trimmed = d.trim();
+            if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+            if (trimmed.includes('T')) return trimmed.split('T')[0];
+            if (trimmed.includes(' ')) return trimmed.split(' ')[0];
+            if (/^\d{2}\/\d{2}\/\d{4}$/.test(trimmed)) {
+                const [day, month, year] = trimmed.split('/');
+                return `${year}-${month}-${day}`;
+            }
+            const parsed = new Date(trimmed);
+            if (!isNaN(parsed.getTime())) {
+                return parsed.toISOString().split('T')[0];
+            }
+            return trimmed;
+        }
+        if (d instanceof Date && !isNaN(d.getTime())) {
+            return d.toISOString().split('T')[0];
+        }
+        return '';
+    };
+
     const stripHtml = (html?: string) => {
         if (!html) return '';
         const tempDiv = document.createElement("div");
@@ -86,8 +109,11 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
                 const resolvedClientId = invoiceToEdit.clientId || 'client-comptoir';
                 setClientId(resolvedClientId);
                 setDocumentId(invoiceToEdit.documentId || '');
-                setDate(invoiceToEdit.date);
-                setDueDate(invoiceToEdit.dueDate || invoiceToEdit.lineItems[0]?.dueDate || new Date(new Date(invoiceToEdit.date).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
+                const cleanDate = normalizeDateForInput(invoiceToEdit.date);
+                setDate(cleanDate);
+                const rawDueDate = invoiceToEdit.dueDate || invoiceToEdit.lineItems[0]?.dueDate;
+                const cleanDueDate = rawDueDate ? normalizeDateForInput(rawDueDate) : (cleanDate ? new Date(new Date(cleanDate).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] : '');
+                setDueDate(cleanDueDate);
                 setSubject(invoiceToEdit.subject || invoiceToEdit.lineItems[0]?.subject || '');
                 setShowSubjectField(!!(invoiceToEdit.subject || invoiceToEdit.lineItems[0]?.subject));
                 const po = invoiceToEdit.purchaseOrderNumber || invoiceToEdit.lineItems[0]?.purchaseOrderNumber || '';
@@ -98,6 +124,7 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
                 setShowPaymentMethodField(!!pm);
                 setCheckNumber(invoiceToEdit.checkNumber || '');
                 setBankName(invoiceToEdit.bankName || '');
+                setShowDueDateField(!!rawDueDate);
                 setNotes(invoiceToEdit.notes || '');
                 // Read calculationMode from first line item
                 setCalculationMode(invoiceToEdit.lineItems[0]?.calculationMode || 'piece');
@@ -191,7 +218,8 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
                 setTempDesc(stripHtml(product.description || ''));
                 const priceToDisplay = isModeTTC ? roundPrice(product.salePrice * (1 + product.vat / 100)) : product.salePrice;
                 setTempPrice(formatDecimalForInput(priceToDisplay, language));
-                setTempVat(product.vat);
+                const itemVat = (companySettings?.defaultTva === 0) ? 0 : (typeof product.vat === 'number' ? product.vat : (companySettings?.defaultTva ?? 20));
+                setTempVat(itemVat);
                 setTempProductCode(product.productCode);
                 setTempUnit(product.unitOfMeasure || '');
             }
@@ -423,7 +451,7 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
         setSaveError(null);
 
         if (!clientId) {
-            setSaveError(language === 'ar' ? 'يرجى تحديد أو اختيار العميل قبل حفظ الفاتورة' : 'Veuillez sélectionner un client pour enregistrer la facture.');
+            setSaveError(language === 'ar' ? 'يرجى تحديد أو اختيار العميل قبل حفظ الوصل' : 'Veuillez sélectionner un client pour enregistrer le bon.');
             return;
         }
 
@@ -460,7 +488,7 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
         }
 
         if (effectiveLineItems.length === 0) {
-            setSaveError(language === 'ar' ? 'يرجى إضافة مادة واحدة على الأقل إلى الفاتورة (اضغط على زر + إضافة)' : 'Veuillez ajouter au moins un article à la facture (cliquez sur + Ajouter).');
+            setSaveError(language === 'ar' ? 'يرجى إضافة مادة واحدة على الأقل إلى الوصل (اضغط على زر + إضافة)' : 'Veuillez ajouter au moins un article au bon (cliquez sur + Ajouter).');
             return;
         }
 
@@ -528,8 +556,8 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
         if (insufficientProducts.length > 0) {
             const proceed = window.confirm(
                 language === 'ar'
-                    ? `تنبيه: المخزون المسجل لبعض المواد غير كافٍ:\n${insufficientProducts.join('\n')}\n\nهل تريد المتابعة وحفظ الفاتورة رغم ذلك؟`
-                    : `Attention : Stock insuffisant pour :\n${insufficientProducts.join('\n')}\n\nSouhaitez-vous quand même enregistrer la facture ?`
+                    ? `تنبيه: المخزون المسجل لبعض المواد غير كافٍ:\n${insufficientProducts.join('\n')}\n\nهل تريد المتابعة وحفظ الوصل رغم ذلك؟`
+                    : `Attention : Stock insuffisant pour :\n${insufficientProducts.join('\n')}\n\nSouhaitez-vous quand même enregistrer le bon ?`
             );
             if (!proceed) return;
         }
@@ -550,12 +578,14 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
             };
         }
 
+        const effectiveDate = date ? normalizeDateForInput(date) : (invoiceToEdit?.date ? normalizeDateForInput(invoiceToEdit.date) : new Date().toISOString().split('T')[0]);
+
         const invoiceData = {
             documentId: documentId || undefined,
             clientId: savedClientId, 
             clientName: clientNameDisplay, 
-            date, 
-            dueDate: showDueDateField ? dueDate : undefined, 
+            date: effectiveDate, 
+            dueDate: showDueDateField && dueDate ? normalizeDateForInput(dueDate) : undefined, 
             subject: showSubjectField ? subject : undefined, 
             purchaseOrderNumber: showPOField ? purchaseOrderNumber : undefined,
             paymentMethod: showPaymentMethodField ? invoicePaymentMethod : undefined,
@@ -589,7 +619,7 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
             handleClose(); 
         } catch (error: any) { 
             console.error("Save invoice error:", error); 
-            setSaveError(error?.message || (language === 'ar' ? 'حدث خطأ أثناء حفظ الفاتورة' : "Erreur lors de l'enregistrement de la facture"));
+            setSaveError(error?.message || (language === 'ar' ? 'حدث خطأ أثناء حفظ الوصل' : "Erreur lors de l'enregistrement du bon"));
         } finally { 
             setIsSubmitting(false); 
         }
@@ -600,7 +630,8 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
 
     return createPortal(
         <div className={`fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 transition-opacity duration-200 ${isVisible ? 'opacity-100' : 'opacity-0'}`} aria-modal="true">
-            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md" onClick={handleClose}></div>
+            {/* Backdrop: clicking outside is disabled to prevent accidental data loss */}
+            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md"></div>
             <div className={`relative w-full h-full md:h-auto md:max-h-[92vh] md:max-w-6xl bg-white rounded-2xl shadow-2xl border border-slate-100 transition-all duration-200 ease-out flex flex-col overflow-hidden ${isVisible ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}`}>
                 
                 {/* Header */}
@@ -614,7 +645,7 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
                             <p className="text-xs text-slate-500">
                                 {invoiceToEdit 
                                     ? `#${invoiceToEdit.documentId || invoiceToEdit.id}` 
-                                    : (language === 'fr' ? 'Éditer et enregistrer une nouvelle facture client' : 'Create and save a new invoice')}
+                                    : (language === 'fr' ? 'Éditer et enregistrer un nouveau bon client' : (language === 'ar' ? 'تحرير وحفظ وصل جديد' : 'Create and save a new voucher/bon'))}
                             </p>
                         </div>
                     </div>
@@ -626,7 +657,7 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
                 <div className="px-3 md:px-6 py-5 overflow-y-auto custom-scrollbar flex-1 space-y-6 pb-24 md:pb-8">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-1">
-                            <label className="block text-sm font-bold text-slate-700 ml-1">{language === 'es' ? 'Nº de Facture' : 'N° Facture'} *</label>
+                            <label className="block text-sm font-bold text-slate-700 ml-1">{language === 'es' ? 'Nº de Bon' : (language === 'ar' ? 'رقم الوصل (N° Bon)' : 'N° Bon')} *</label>
                             <input 
                                 type="text" 
                                 value={documentId} 
@@ -1047,7 +1078,7 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
                                     </thead>
                                     <tbody className="bg-white divide-y divide-slate-100">
                                         {(lineItems || []).map(item => {
-                                            const itemVat = typeof item.vat === 'number' ? item.vat : 20;
+                                            const itemVat = typeof item.vat === 'number' ? item.vat : (companySettings?.defaultTva ?? 20);
                                             const displayPrice = isModeTTC ? roundPrice(item.unitPrice * (1 + itemVat/100)) : item.unitPrice;
                                             const displayLineTotal = (item.quantity || 0) * getLineMultiplier(item) * (displayPrice || 0);
                                             
@@ -1158,7 +1189,7 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
                             {/* Mobile Card View */}
                             <div className="md:hidden space-y-3">
                                 {(lineItems || []).map(item => {
-                                    const itemVat = typeof item.vat === 'number' ? item.vat : 20;
+                                    const itemVat = typeof item.vat === 'number' ? item.vat : (companySettings?.defaultTva ?? 20);
                                     const displayPrice = isModeTTC ? roundPrice(item.unitPrice * (1 + itemVat/100)) : item.unitPrice;
                                     const displayLineTotal = (item.quantity || 0) * getLineMultiplier(item) * (displayPrice || 0);
                                     

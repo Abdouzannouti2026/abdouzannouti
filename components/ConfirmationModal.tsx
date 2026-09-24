@@ -55,7 +55,8 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({ isOpen, onClose, 
 
     return createPortal(
         <div className={`fixed inset-0 z-[9999] flex items-center justify-center p-4 transition-opacity duration-200 ${isVisible ? 'opacity-100' : 'opacity-0'}`} aria-modal="true">
-            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md transition-opacity" onClick={handleClose}></div>
+            {/* Backdrop: clicking outside is disabled to prevent accidental dismiss */}
+            <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md transition-opacity"></div>
             <div className={`relative w-full max-w-md p-6 bg-white rounded-2xl shadow-2xl border border-slate-100 transition-all duration-200 ease-out ${isVisible ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}`} role="dialog" aria-labelledby="modal-title">
                 <div className="sm:flex sm:items-start gap-4">
                     <div className="mx-auto flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-rose-50 border border-rose-100 sm:mx-0">

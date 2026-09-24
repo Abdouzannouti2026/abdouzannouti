@@ -1,7 +1,30 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Keyboard, Volume2, CheckCircle2, Zap, AlertCircle, Upload, Usb, Wifi, Info } from 'lucide-react';
-import { playBeepSound, scanBarcodeFromFile } from '../utils/barcode';
+import { 
+  X, 
+  Flashlight, 
+  FlashlightOff, 
+  SwitchCamera, 
+  Volume2, 
+  VolumeX, 
+  CheckCircle2, 
+  Zap, 
+  AlertCircle, 
+  Keyboard, 
+  Scan, 
+  Camera, 
+  Sparkles,
+  Repeat
+} from 'lucide-react';
+import { 
+  BarcodeFormat, 
+  DecodeHintType, 
+  MultiFormatReader, 
+  RGBLuminanceSource, 
+  BinaryBitmap, 
+  HybridBinarizer 
+} from '@zxing/library';
+import { playBeepSound } from '../utils/barcode';
 import { useLanguage } from '../contexts/LanguageContext';
 
 interface BarcodeScannerModalProps {
@@ -20,243 +43,561 @@ const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   continuous = false
 }) => {
   const { language } = useLanguage();
+
+  // Mode: 'camera' | 'manual'
+  const [activeTab, setActiveTab] = useState<'camera' | 'manual'>('camera');
+  
+  // Camera & Stream State
+  const [cameraFacing, setCameraFacing] = useState<'environment' | 'user'>('environment');
+  const [hasTorch, setHasTorch] = useState<boolean>(false);
+  const [isTorchOn, setIsTorchOn] = useState<boolean>(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [isCameraReady, setIsCameraReady] = useState<boolean>(false);
+  const [isContinuous, setIsContinuous] = useState<boolean>(continuous);
+  const [soundActive, setSoundActive] = useState<boolean>(true);
+
+  // Scan Feedback
+  const [lastScannedCode, setLastScannedCode] = useState<string | null>(null);
+  const [scanCount, setScanCount] = useState<number>(0);
+
+  // Manual Input State
   const [manualCode, setManualCode] = useState('');
-  const [lastScanned, setLastScanned] = useState<string | null>(null);
-  const [fileError, setFileError] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const manualInputRef = useRef<HTMLInputElement>(null);
 
-  // Auto focus input when modal opens
-  useEffect(() => {
-    if (isOpen) {
-      setTimeout(() => inputRef.current?.focus(), 100);
+  // Refs
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const zxingReaderRef = useRef<MultiFormatReader | null>(null);
+  const scanIntervalRef = useRef<number | null>(null);
+  const isScanningRef = useRef<boolean>(false);
+  const lastScannedRef = useRef<{ code: string; time: number }>({ code: '', time: 0 });
+
+  // Stop camera stream & readers
+  const stopCameraStream = useCallback(() => {
+    if (scanIntervalRef.current) {
+      window.clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
     }
-  }, [isOpen]);
+    if (zxingReaderRef.current) {
+      zxingReaderRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => {
+        try {
+          track.stop();
+        } catch {}
+      });
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setIsCameraReady(false);
+    setIsTorchOn(false);
+    setHasTorch(false);
+    isScanningRef.current = false;
+  }, []);
 
-  // Global keydown listener for Douchette scanner in background
-  useEffect(() => {
-    if (!isOpen) return;
+  // Successful scan handler
+  const handleBarcodeDetected = useCallback((code: string) => {
+    const cleanCode = code.trim();
+    if (!cleanCode) return;
 
-    let buffer = '';
-    let lastKeyTime = Date.now();
+    const now = Date.now();
+    // Debounce duplicate scans within 1.5 seconds if continuous mode
+    if (lastScannedRef.current.code === cleanCode && (now - lastScannedRef.current.time) < 1500) {
+      return;
+    }
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // If user is typing in input element, let the input handle it
-      if (document.activeElement === inputRef.current) {
-        return;
-      }
+    lastScannedRef.current = { code: cleanCode, time: now };
 
-      const currentTime = Date.now();
-      if (currentTime - lastKeyTime > 100) {
-        buffer = '';
-      }
-      lastKeyTime = currentTime;
+    // Haptic vibration feedback on phone
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try {
+        navigator.vibrate([70, 40, 70]);
+      } catch {}
+    }
 
-      if (e.key === 'Enter') {
-        if (buffer.trim().length > 2) {
-          e.preventDefault();
-          const code = buffer.trim();
-          handleSuccessfulScan(code);
-          buffer = '';
-        }
-      } else if (e.key.length === 1) {
-        buffer += e.key;
-      }
-    };
+    // Beep sound
+    if (soundActive) {
+      playBeepSound();
+    }
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen]);
+    setLastScannedCode(cleanCode);
+    setScanCount(prev => prev + 1);
+    onScan(cleanCode);
 
-  const handleSuccessfulScan = (code: string) => {
-    if (!code) return;
-    playBeepSound();
-    setLastScanned(code);
-    onScan(code);
-
-    if (!continuous) {
-      onClose();
+    if (!isContinuous) {
+      // Single scan: close after short confirmation
+      setTimeout(() => {
+        stopCameraStream();
+        onClose();
+      }, 350);
     } else {
-      setTimeout(() => setLastScanned(null), 1500);
+      // Continuous scan: briefly flash code and keep scanning
+      setTimeout(() => {
+        setLastScannedCode(null);
+      }, 1500);
+    }
+  }, [isContinuous, soundActive, onScan, onClose, stopCameraStream]);
+
+  // Start Camera Stream
+  const startCameraStream = useCallback(async () => {
+    stopCameraStream();
+    setCameraError(null);
+    setIsCameraReady(false);
+
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error(language === 'ar' ? 'المتصفح لا يدعم الوصول للكاميرا' : "Votre navigateur ne supporte pas l'accès à la caméra.");
+      }
+
+      // Constraints for high performance barcode scanning on mobile
+      const constraints: MediaStreamConstraints = {
+        audio: false,
+        video: {
+          facingMode: { ideal: cameraFacing },
+          width: { ideal: 1920, min: 640 },
+          height: { ideal: 1080, min: 480 },
+          // @ts-ignore
+          focusMode: { ideal: 'continuous' }
+        }
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      streamRef.current = stream;
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+        setIsCameraReady(true);
+      }
+
+      // Check Torch capability
+      const videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack) {
+        const capabilities = (videoTrack.getCapabilities ? videoTrack.getCapabilities() : {}) as any;
+        if (capabilities && capabilities.torch) {
+          setHasTorch(true);
+        }
+      }
+
+      // ================= 1. NATIVE BARCODEDETECTOR API (Fastest hardware acceleration) =================
+      let nativeDetector: any = null;
+      if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
+        try {
+          const supportedFormats = await (window as any).BarcodeDetector.getSupportedFormats();
+          nativeDetector = new (window as any).BarcodeDetector({
+            formats: supportedFormats.filter((f: string) => [
+              'ean_13', 'ean_8', 'code_128', 'code_39', 'upc_a', 'upc_e', 'qr_code', 'itf', 'data_matrix'
+            ].includes(f))
+          });
+        } catch {
+          nativeDetector = null;
+        }
+      }
+
+      // ================= 2. ZXING MULTI-FORMAT READER (Universal Fallback) =================
+      const hints = new Map();
+      hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+        BarcodeFormat.EAN_13,
+        BarcodeFormat.EAN_8,
+        BarcodeFormat.CODE_128,
+        BarcodeFormat.CODE_39,
+        BarcodeFormat.UPC_A,
+        BarcodeFormat.UPC_E,
+        BarcodeFormat.ITF,
+        BarcodeFormat.QR_CODE
+      ]);
+      hints.set(DecodeHintType.TRY_HARDER, true);
+
+      const zxingReader = new MultiFormatReader();
+      zxingReader.setHints(hints);
+      zxingReaderRef.current = zxingReader;
+
+      isScanningRef.current = true;
+
+      // Canvas for high-speed frame sampling
+      const sampleCanvas = document.createElement('canvas');
+      const sampleCtx = sampleCanvas.getContext('2d', { willReadFrequently: true });
+
+      // Scan Loop (~20 to 30 FPS)
+      const processFrame = async () => {
+        if (!isScanningRef.current || !videoRef.current) return;
+
+        const video = videoRef.current;
+        if (video.readyState < 2 || video.videoWidth === 0) {
+          return;
+        }
+
+        // Try Native BarcodeDetector first
+        if (nativeDetector) {
+          try {
+            const barcodes = await nativeDetector.detect(video);
+            if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+              handleBarcodeDetected(barcodes[0].rawValue);
+              return;
+            }
+          } catch {
+            // fallback to zxing
+          }
+        }
+
+        // ZXing Fallback via canvas sampling
+        if (sampleCtx && zxingReaderRef.current) {
+          try {
+            sampleCanvas.width = video.videoWidth;
+            sampleCanvas.height = video.videoHeight;
+            sampleCtx.drawImage(video, 0, 0, sampleCanvas.width, sampleCanvas.height);
+
+            const imgData = sampleCtx.getImageData(0, 0, sampleCanvas.width, sampleCanvas.height);
+            const luminanceSource = new RGBLuminanceSource(
+              imgData.data,
+              sampleCanvas.width,
+              sampleCanvas.height
+            );
+            const binaryBitmap = new BinaryBitmap(new HybridBinarizer(luminanceSource));
+            const result = zxingReaderRef.current.decode(binaryBitmap);
+            if (result && result.getText()) {
+              handleBarcodeDetected(result.getText());
+            }
+          } catch {
+            // Frame did not contain a decoded barcode, loop continues
+          }
+        }
+      };
+
+      // Set scanning interval
+      scanIntervalRef.current = window.setInterval(processFrame, 65);
+
+    } catch (err: any) {
+      console.error('Camera access error:', err);
+      let errorMsg = language === 'ar' 
+        ? 'تعذر تشغيل الكاميرا. يرجى التأكد من السماح للتطبيق باستخدام الكاميرا في إعدادات المتصفح.'
+        : "Impossible d'accéder à la caméra. Vérifiez les autorisations de votre navigateur.";
+      
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        errorMsg = language === 'ar'
+          ? 'تم رفض إذن الكاميرا. يرجى تفعيل إذن الكاميرا من إعدادات المتصفح.'
+          : "L'autorisation d'accès à la caméra a été refusée.";
+      }
+      setCameraError(errorMsg);
+      setActiveTab('manual');
+    }
+  }, [cameraFacing, language, handleBarcodeDetected, stopCameraStream]);
+
+  // Toggle Torch (Flashlight)
+  const toggleTorch = async () => {
+    if (!streamRef.current) return;
+    const track = streamRef.current.getVideoTracks()[0];
+    if (track && 'applyConstraints' in track) {
+      try {
+        const newState = !isTorchOn;
+        await track.applyConstraints({
+          // @ts-ignore
+          advanced: [{ torch: newState }]
+        });
+        setIsTorchOn(newState);
+      } catch (e) {
+        console.warn('Torch toggle failed', e);
+      }
     }
   };
 
+  // Switch between front/back camera
+  const switchCameraFacing = () => {
+    setCameraFacing(prev => prev === 'environment' ? 'user' : 'environment');
+  };
+
+  // Restart camera when switching facing mode or when modal opens
+  useEffect(() => {
+    if (isOpen && activeTab === 'camera') {
+      startCameraStream();
+    } else {
+      stopCameraStream();
+    }
+
+    return () => {
+      stopCameraStream();
+    };
+  }, [isOpen, activeTab, cameraFacing, startCameraStream, stopCameraStream]);
+
+  // Auto focus manual input when tab switched
+  useEffect(() => {
+    if (activeTab === 'manual') {
+      setTimeout(() => manualInputRef.current?.focus(), 150);
+    }
+  }, [activeTab]);
+
+  // Handle manual code submit
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (manualCode.trim()) {
-      handleSuccessfulScan(manualCode.trim());
+      handleBarcodeDetected(manualCode.trim());
       setManualCode('');
-    }
-  };
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setFileError(null);
-
-    try {
-      const code = await scanBarcodeFromFile(file);
-      if (code) {
-        handleSuccessfulScan(code);
-      } else {
-        setFileError(language === 'fr' ? 'Aucun code-barres lisible trouvé sur cette photo.' : 'No readable barcode found in this image.');
-      }
-    } catch (err) {
-      console.warn('File scan error:', err);
-      setFileError(language === 'fr' ? 'Impossible de lire le code-barres sur cette photo.' : 'Could not decode barcode from this image.');
-    } finally {
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
     }
   };
 
   if (!isOpen) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
-      <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-md" onClick={onClose}></div>
-      <div className="relative w-full max-w-lg bg-slate-900 rounded-3xl shadow-2xl border border-slate-800 overflow-hidden text-white flex flex-col">
-        {/* Header */}
-        <div className="px-6 py-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-              <Zap className="w-5 h-5" />
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-0 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
+      
+      {/* Main Container - Fullscreen on Mobile ("Chada telephone kaml") */}
+      <div className="relative w-full h-full sm:h-auto sm:max-h-[92vh] sm:max-w-2xl bg-slate-950 sm:rounded-3xl shadow-2xl border-0 sm:border border-slate-800 flex flex-col overflow-hidden text-white">
+        
+        {/* ================= HEADER OVERLAY ================= */}
+        <div className="absolute top-0 inset-x-0 z-30 flex items-center justify-between p-4 bg-gradient-to-b from-slate-950/90 via-slate-950/60 to-transparent backdrop-blur-xs">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shadow-md shadow-emerald-950">
+              <Camera className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-bold text-base text-white">
-                {title || (language === 'fr' ? 'Lecteur Code-Barres / Douchette' : 'Douchette Barcode Reader')}
+              <h3 className="font-bold text-sm sm:text-base text-white leading-tight flex items-center gap-2">
+                <span>{title || (language === 'ar' ? 'مسح الباركود بالكاميرا' : 'Scanner Code-Barres')}</span>
+                {scanCount > 0 && (
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-500 text-slate-950 font-black text-xs">
+                    +{scanCount}
+                  </span>
+                )}
               </h3>
-              <p className="text-xs text-slate-400">
-                {language === 'fr' ? 'Douchette USB / Bluetooth & Saisie Manuelle' : 'USB / Bluetooth Douchette & Manual Entry'}
+              <p className="text-[11px] text-slate-300">
+                {activeTab === 'camera' 
+                  ? (language === 'ar' ? 'كاميرا الهاتف المباشرة' : 'Caméra Smartphone HD') 
+                  : (language === 'ar' ? 'إدخال يدوي' : 'Saisie manuelle')}
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-all"
-          >
-            <X size={20} />
-          </button>
-        </div>
 
-        <div className="p-6 space-y-5">
-          {/* Active Reader Status Box */}
-          <div className="relative w-full p-5 bg-gradient-to-br from-slate-950 to-slate-900 rounded-2xl border border-emerald-500/30 overflow-hidden shadow-inner flex flex-col items-center justify-center text-center">
-            {/* Pulsing indicator */}
-            <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/40 flex items-center justify-center text-emerald-400 mb-3 shadow-[0_0_20px_rgba(16,185,129,0.2)]">
-              <Usb className="w-6 h-6 animate-pulse" />
-            </div>
-
-            <span className="text-sm font-bold text-emerald-400 flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
-              {language === 'fr' ? 'Douchette Prête & En Écoute' : 'Douchette Ready & Active'}
-            </span>
-
-            <p className="text-xs text-slate-400 mt-1.5 max-w-xs leading-relaxed">
-              {language === 'fr' 
-                ? 'Pointez votre douchette USB ou Bluetooth vers le code-barres et appuyez sur le bouton.'
-                : 'Point your USB or Bluetooth douchette at the barcode and press the trigger.'}
-            </p>
-
-            {/* Success flash overlay */}
-            {lastScanned && (
-              <div className="absolute inset-0 bg-emerald-950/95 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center animate-in zoom-in-95 duration-150">
-                <CheckCircle2 className="w-14 h-14 text-emerald-400 mb-2 animate-bounce" />
-                <span className="text-xs uppercase tracking-wider text-emerald-400 font-bold">
-                  {language === 'fr' ? 'Code Scanné !' : 'Barcode Scanned!'}
-                </span>
-                <span className="mt-1 px-4 py-1.5 bg-emerald-900/60 border border-emerald-500/50 rounded-xl text-lg font-mono font-bold text-white">
-                  {lastScanned}
-                </span>
-              </div>
-            )}
-          </div>
-
-          {/* Guide: How to connect Douchette */}
-          <div className="bg-slate-950/80 p-4 rounded-2xl border border-slate-800 space-y-2.5 text-xs">
-            <div className="flex items-center gap-2 font-bold text-slate-200">
-              <Info size={16} className="text-emerald-400 shrink-0" />
-              <span>{language === 'fr' ? 'Comment connecter votre Douchette à FacturaGo ?' : 'How to connect your Douchette to FacturaGo?'}</span>
-            </div>
-            <ul className="space-y-1.5 text-slate-400 pl-6 list-disc leading-relaxed">
-              <li>
-                <strong className="text-slate-300">Douchette USB :</strong> {language === 'fr' ? 'Branchez simplement le câble USB à votre PC. Elle est immédiatement détectée sans aucun logiciel !' : 'Simply plug the USB cable into your PC. It works instantly without drivers!'}
-              </li>
-              <li>
-                <strong className="text-slate-300">Douchette Bluetooth / Sans fil :</strong> {language === 'fr' ? 'Appairez-la avec votre PC/Tablette via Bluetooth. Elle fonctionne comme un clavier أوتوماتيكي.' : 'Pair it with your PC/Tablet via Bluetooth. It acts like an automatic keyboard.'}
-              </li>
-              <li>
-                <strong className="text-slate-300">{language === 'fr' ? 'Scan Direct dans l\'App :' : 'Direct Scanning:'}</strong> {language === 'fr' ? 'Même بدون فتح هذه النافذة, يمكنك المسح بالدوشيت مباشرة في صفحة المبيعات أو المخزون.' : 'You can scan directly on any sales or stock page without opening this window.'}
-              </li>
-            </ul>
-          </div>
-
-          {/* Manual Input Form */}
-          <form onSubmit={handleManualSubmit} className="space-y-2 pt-2 border-t border-slate-800">
-            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between">
-              <span className="flex items-center gap-1.5">
-                <Keyboard size={14} className="text-emerald-400" />
-                <span>{language === 'fr' ? 'Saisie Manuelle ou Test' : 'Manual Entry / Test'}</span>
-              </span>
-              <span className="text-[10px] text-slate-500 normal-case font-normal">
-                {language === 'fr' ? 'Tapez ou scannez ici' : 'Type or scan here'}
-              </span>
-            </label>
-            
-            <div className="flex gap-2">
-              <input
-                ref={inputRef}
-                type="text"
-                value={manualCode}
-                onChange={(e) => setManualCode(e.target.value)}
-                placeholder={language === 'fr' ? 'Ex: 6111234567890...' : 'Ex: 6111234567890...'}
-                className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white font-mono placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
-                autoFocus
-              />
+          <div className="flex items-center gap-1.5">
+            {/* Mode Tabs (Camera / Manual) */}
+            <div className="bg-slate-900/80 p-1 rounded-xl border border-slate-800 flex items-center">
               <button
-                type="submit"
-                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition-all shadow-md shadow-emerald-900/30"
+                type="button"
+                onClick={() => setActiveTab('camera')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  activeTab === 'camera' 
+                    ? 'bg-emerald-600 text-white shadow-sm' 
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title="Caméra"
               >
-                {language === 'fr' ? 'Valider' : 'Submit'}
+                <Camera size={13} />
+                <span className="hidden sm:inline">{language === 'ar' ? 'كاميرا' : 'Caméra'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('manual')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  activeTab === 'manual' 
+                    ? 'bg-emerald-600 text-white shadow-sm' 
+                    : 'text-slate-400 hover:text-white'
+                }`}
+                title="Manuel"
+              >
+                <Keyboard size={13} />
+                <span className="hidden sm:inline">{language === 'ar' ? 'يدوي' : 'Manuel'}</span>
               </button>
             </div>
-          </form>
 
-          {/* Secondary File upload option */}
-          <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 text-xs">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handleFileUpload}
-            />
-            
+            {/* Close Button */}
             <button
               type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/80 hover:bg-slate-800 text-[11px] font-medium text-slate-300 rounded-xl transition-all border border-slate-700/60"
+              onClick={() => {
+                stopCameraStream();
+                onClose();
+              }}
+              className="p-2 rounded-xl bg-slate-900/80 hover:bg-rose-600 border border-slate-800 hover:border-rose-500 text-slate-300 hover:text-white transition-colors cursor-pointer"
+              title={language === 'ar' ? 'إغلاق' : 'Fermer'}
             >
-              <Upload size={13} className="text-emerald-400" />
-              <span>{language === 'fr' ? 'Tester avec une photo de code-barres' : 'Test with a barcode photo'}</span>
+              <X size={18} />
             </button>
+          </div>
+        </div>
 
-            <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
-              <Volume2 size={13} className="text-emerald-400" />
-              <span>{language === 'fr' ? 'Bip sonore actif' : 'Beep active'}</span>
+        {/* ================= CAMERA VIEWPORT (IMMERSIVE FULL SCREEN) ================= */}
+        {activeTab === 'camera' && (
+          <div className="relative flex-1 w-full min-h-[420px] sm:min-h-[480px] bg-black flex items-center justify-center overflow-hidden">
+            
+            {/* Live Video Element spanning full viewport */}
+            <video
+              ref={videoRef}
+              playsInline
+              muted
+              autoPlay
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+
+            {/* Darker subtle gradient border edges to focus the scan area */}
+            <div className="absolute inset-0 bg-radial-[ellipse_at_center,_transparent_45%,_rgba(2,6,23,0.7)_100%] pointer-events-none" />
+
+            {/* Full-width Wide Laser Barcode Target Overlay */}
+            <div className="relative z-10 w-[88%] max-w-lg aspect-[16/10] sm:aspect-[16/9] flex flex-col items-center justify-between p-4 pointer-events-none">
+              
+              {/* Corner Brackets (Wide viewfinder) */}
+              <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-emerald-400 rounded-tl-2xl shadow-[0_0_12px_rgba(52,211,153,0.8)]" />
+              <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-emerald-400 rounded-tr-2xl shadow-[0_0_12px_rgba(52,211,153,0.8)]" />
+              <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-emerald-400 rounded-bl-2xl shadow-[0_0_12px_rgba(52,211,153,0.8)]" />
+              <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-emerald-400 rounded-br-2xl shadow-[0_0_12px_rgba(52,211,153,0.8)]" />
+
+              {/* Glowing animated vertical sweep laser line */}
+              <div className="absolute inset-x-2 top-0 bottom-0 overflow-hidden flex flex-col justify-center pointer-events-none">
+                <div className="w-full h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_16px_#10b981] animate-bounce duration-1000" />
+              </div>
+
+              {/* Scanning status hint badge */}
+              <div className="mt-auto px-4 py-1.5 rounded-full bg-slate-950/80 border border-emerald-500/40 text-emerald-300 font-bold text-xs backdrop-blur-md flex items-center gap-2 shadow-lg">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                <span>
+                  {language === 'ar' ? 'ضع خطوط الباركود داخل الإطار' : 'Placez le code-barres dans la zone'}
+                </span>
+              </div>
+            </div>
+
+            {/* Success Scan Flash overlay */}
+            {lastScannedCode && (
+              <div className="absolute inset-0 z-20 bg-emerald-950/90 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center animate-in zoom-in-95 duration-150">
+                <div className="w-16 h-16 rounded-3xl bg-emerald-500 text-slate-950 flex items-center justify-center mb-3 shadow-[0_0_30px_rgba(16,185,129,0.5)] animate-bounce">
+                  <CheckCircle2 size={36} />
+                </div>
+                <span className="text-xs uppercase tracking-widest text-emerald-300 font-black">
+                  {language === 'ar' ? 'تمت القراءة بنجاح !' : 'CODE-BARRES SCANNÉ !'}
+                </span>
+                <span className="mt-2 px-5 py-2 bg-slate-950/90 border-2 border-emerald-400 rounded-2xl text-xl sm:text-2xl font-mono font-black text-white shadow-xl">
+                  {lastScannedCode}
+                </span>
+                {isContinuous && (
+                  <span className="mt-3 text-xs text-emerald-200 font-medium">
+                    {language === 'ar' ? 'متابعة المسح...' : 'Prêt pour le prochain article...'}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Floating Camera Controls (Torch, Switch Camera, Sound, Continuous) */}
+            <div className="absolute bottom-4 inset-x-4 z-20 flex items-center justify-between pointer-events-auto">
+              
+              {/* Left Controls: Sound + Continuous toggle */}
+              <div className="flex items-center gap-2 bg-slate-950/80 backdrop-blur-md p-1.5 rounded-2xl border border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setSoundActive(prev => !prev)}
+                  className={`p-2.5 rounded-xl transition-all ${
+                    soundActive ? 'bg-emerald-500/20 text-emerald-400' : 'text-slate-500 hover:text-slate-300'
+                  }`}
+                  title={soundActive ? 'Désactiver le bip' : 'Activer le bip'}
+                >
+                  {soundActive ? <Volume2 size={18} /> : <VolumeX size={18} />}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsContinuous(prev => !prev)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    isContinuous 
+                      ? 'bg-emerald-600 text-white shadow-sm' 
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                  title="Scanner plusieurs articles d'affilée"
+                >
+                  <Repeat size={14} className={isContinuous ? 'animate-spin' : ''} />
+                  <span>{language === 'ar' ? 'مسح متتابع' : 'Continu'}</span>
+                </button>
+              </div>
+
+              {/* Right Controls: Torch + Switch Camera */}
+              <div className="flex items-center gap-2 bg-slate-950/80 backdrop-blur-md p-1.5 rounded-2xl border border-slate-800">
+                {hasTorch && (
+                  <button
+                    type="button"
+                    onClick={toggleTorch}
+                    className={`p-2.5 rounded-xl transition-all ${
+                      isTorchOn 
+                        ? 'bg-amber-500 text-slate-950 shadow-[0_0_15px_rgba(245,158,11,0.5)]' 
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                    title={isTorchOn ? 'Éteindre le flash' : 'Allumer le flash (Lampe torche)'}
+                  >
+                    {isTorchOn ? <Flashlight size={18} /> : <FlashlightOff size={18} />}
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={switchCameraFacing}
+                  className="p-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/80 transition-all"
+                  title="Changer de caméra (Avant / Arrière)"
+                >
+                  <SwitchCamera size={18} />
+                </button>
+              </div>
             </div>
           </div>
+        )}
 
-          {fileError && (
-            <div className="bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs p-2.5 rounded-xl flex items-center gap-2">
-              <AlertCircle size={15} className="shrink-0" />
-              <span>{fileError}</span>
+        {/* ================= MANUAL / DOUCHETTE TAB ================= */}
+        {activeTab === 'manual' && (
+          <div className="p-6 space-y-6 flex-1 flex flex-col justify-center bg-slate-950">
+            
+            {/* Notice if camera was denied */}
+            {cameraError && (
+              <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-2xl text-rose-300 text-xs flex items-start gap-3">
+                <AlertCircle size={18} className="shrink-0 mt-0.5 text-rose-400" />
+                <div>
+                  <p className="font-bold">{cameraError}</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('camera');
+                      startCameraStream();
+                    }}
+                    className="mt-2 text-emerald-400 font-bold underline hover:text-emerald-300 cursor-pointer"
+                  >
+                    {language === 'ar' ? 'إعادة محاولة تشغيل الكاميرا' : 'Réessayer d\'activer la caméra'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Manual Form */}
+            <form onSubmit={handleManualSubmit} className="space-y-4">
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between">
+                <span className="flex items-center gap-2 text-white">
+                  <Keyboard size={16} className="text-emerald-400" />
+                  <span>{language === 'ar' ? 'أدخل كود الباركود يدوياً أو بالدوشيت' : 'Saisie du Code-Barres ou Douchette'}</span>
+                </span>
+              </label>
+
+              <div className="flex gap-2">
+                <input
+                  ref={manualInputRef}
+                  type="text"
+                  value={manualCode}
+                  onChange={(e) => setManualCode(e.target.value)}
+                  placeholder={language === 'ar' ? 'مثال: 6111234567890...' : 'Ex: 6111234567890...'}
+                  className="flex-1 bg-slate-900 border-2 border-slate-800 focus:border-emerald-500 rounded-2xl px-5 py-3.5 text-base text-white font-mono placeholder-slate-500 focus:outline-none focus:ring-4 focus:ring-emerald-500/20"
+                  autoFocus
+                />
+                <button
+                  type="submit"
+                  className="px-6 py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm rounded-2xl transition-all shadow-lg shadow-emerald-950 active:scale-95 cursor-pointer"
+                >
+                  {language === 'ar' ? 'تأكيد' : 'Valider'}
+                </button>
+              </div>
+            </form>
+
+            <div className="p-4 bg-slate-900/60 rounded-2xl border border-slate-800/80 text-xs text-slate-400 leading-relaxed flex items-center gap-3">
+              <Zap size={20} className="text-emerald-400 shrink-0" />
+              <span>
+                {language === 'ar'
+                  ? 'يمكنك أيضاً استخدام قارئ الباركود (Douchette USB/Bluetooth) في أي وقت مباشرة بدون الحاجة لفتح هذه النافذة.'
+                  : 'Vous pouvez aussi utiliser votre douchette USB ou Bluetooth directement à tout moment.'}
+              </span>
             </div>
-          )}
-        </div>
+          </div>
+        )}
+
       </div>
     </div>,
     document.body
@@ -264,4 +605,3 @@ const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 };
 
 export default BarcodeScannerModal;
-
