@@ -59,10 +59,11 @@ const InvoiceReportModal: React.FC<InvoiceReportModalProps> = ({
         const end = new Date(endDate);
         end.setHours(23, 59, 59, 999);
 
-        // Filter out drafts if requested, but let's show all valid invoices
+        // Filter out drafts and fully paid invoices (only show partially paid or pending/unpaid)
         const result = invoices.filter(invoice => {
             const invDate = new Date(invoice.date);
-            return invDate >= start && invDate <= end && invoice.status !== InvoiceStatus.Draft;
+            const isFullyPaid = invoice.status === InvoiceStatus.Paid || (invoice.amountPaid !== undefined && invoice.amountPaid >= invoice.amount);
+            return invDate >= start && invDate <= end && invoice.status !== InvoiceStatus.Draft && !isFullyPaid;
         }).sort((a, b) => a.date.localeCompare(b.date));
 
         // Calculate totals
