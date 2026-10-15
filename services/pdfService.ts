@@ -34,6 +34,7 @@ export interface DocumentData {
   reference?: string;
   purchaseOrderNumber?: string;
   dueDate?: string;
+  paymentDate?: string;
   expiryDate?: string;
   expectedDate?: string;
   invoiceId?: string; // For Credit Notes
@@ -757,6 +758,7 @@ export const generateDocumentHTML = (
   }
 
   const docSubject = doc.subject || doc.lineItems[0]?.subject || "";
+  const docRecipientName = (doc as any).recipientName || doc.lineItems[0]?.recipientName || "";
   const docPaymentMethod = doc.paymentMethod || doc.lineItems[0]?.paymentMethod || "";
   const docCheckNumber = doc.checkNumber || doc.lineItems[0]?.checkNumber || "";
   const docBankName = doc.bankName || doc.lineItems[0]?.bankName || "";
@@ -1053,10 +1055,12 @@ export const generateDocumentHTML = (
     const paid = doc.amountPaid || doc.paymentAmount || 0;
     const remaining = totalAmount - paid;
     if (paid > 0) {
+      const rawPayDate = doc.paymentDate || doc.lineItems[0]?.paymentDate;
+      const payDateFormatted = rawPayDate ? new Date(rawPayDate).toLocaleDateString(lang === "ar" ? "ar-MA" : (lang === "es" ? "es-ES" : lang === "en" ? "en-US" : "fr-FR")) : "";
       paymentInfoHtml = `
                 <div style="margin-top: 10px; font-size: ${fs(12)}; color: #059669;">
-                    ${lang === "es" ? "Ya pagado" : lang === "en" ? "Already paid" : "Déjà réglé"} : <b>${paid.toLocaleString("fr-MA", { style: 'currency', currency: settings?.defaultCurrencyCode || 'MAD' })}</b>
-                    ${remaining > 0.1 ? `<br/><span style="color: #d97706;">${lang === "es" ? "Importe pendiente" : lang === "en" ? "Balance due" : "Reste à payer"} : <b>${remaining.toLocaleString("fr-MA", { style: 'currency', currency: settings?.defaultCurrencyCode || 'MAD' })}</b></span>` : `<br/><span style="color: #059669; font-weight: bold;">${lang === "es" ? "Liquidado" : lang === "en" ? "Settled" : "Soldé"}</span>`}
+                    ${lang === "ar" ? "التسبيق / المدفوع" : (lang === "es" ? "Anticipo / Pagado" : lang === "en" ? "Advance / Paid" : "Avance / Réglé")} : <b>${paid.toLocaleString("fr-MA", { style: 'currency', currency: settings?.defaultCurrencyCode || 'MAD' })}</b>${payDateFormatted ? ` <span style="font-size: ${fs(10)}; color: #6b7280; font-weight: normal;">(${lang === "ar" ? "بتاريخ" : "le"} ${payDateFormatted})</span>` : ""}
+                    ${remaining > 0.1 ? `<br/><span style="color: #d97706;">${lang === "ar" ? "المتبقي" : (lang === "es" ? "Importe pendiente" : lang === "en" ? "Balance due" : "Reste à payer")} : <b>${remaining.toLocaleString("fr-MA", { style: 'currency', currency: settings?.defaultCurrencyCode || 'MAD' })}</b></span>` : `<br/><span style="color: #059669; font-weight: bold;">${lang === "ar" ? "مسدد بالكامل" : (lang === "es" ? "Liquidado" : lang === "en" ? "Settled" : "Soldé")}</span>`}
                 </div>
             `;
     }
@@ -1073,6 +1077,7 @@ export const generateDocumentHTML = (
             ${secondDateLabel ? `<div>${secondDateLabel} : <b>${secondDateValue}</b></div>` : ""}
             ${doc.purchaseOrderNumber ? `<div>${dict.purchaseOrderNumber || "N° BC"} : <b>${doc.purchaseOrderNumber}</b></div>` : ""}
             ${doc.invoiceId ? `<div>${lang === "es" ? "Ref. Factura" : lang === "en" ? "Invoice Ref" : "Réf. Facture"} : <b>${doc.invoiceId}</b></div>` : ""}
+            ${docRecipientName ? `<div>${lang === "ar" ? "المستلم" : (lang === "es" ? "Destinatario" : "Destinataire")} : <b style="color: #047857;">${docRecipientName}</b></div>` : ""}
         </div>
     `;
 
@@ -1130,6 +1135,14 @@ export const generateDocumentHTML = (
                 </div>
                 `
                     : ""
+                }
+                ${
+                  docRecipientName ? `
+                <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed #d1d5db; width: 100%; font-size: ${fs(11.5)}; color: #111827;">
+                    <span style="color: #6b7280; font-weight: 600;">${lang === "ar" ? "المستلم / موجه إلى :" : (lang === "es" ? "Destinatario / Entregado a :" : (lang === "en" ? "Recipient / To :" : "Destinataire / Livré à :"))}</span>
+                    <b style="color: #047857; margin-left: 4px;">${docRecipientName}</b>
+                </div>
+                ` : ""
                 }
             </div>
         </div>
@@ -2538,6 +2551,10 @@ export const generateThermalTicketHtml = (
       <div class="meta-row">
         <span><strong>CLIENT:</strong> ${recipient?.name || 'Client Comptoir'}</span>
         ${recipient?.phone ? `<span>${recipient.phone}</span>` : ''}
+      </div>` : ''}
+      ${((doc as any).recipientName || doc.lineItems?.[0]?.recipientName) ? `
+      <div class="meta-row" style="font-weight: 600;">
+        <span><strong>${lang === 'ar' ? 'المستلم' : 'DESTINATAIRE'}:</strong> ${(doc as any).recipientName || doc.lineItems?.[0]?.recipientName}</span>
       </div>` : ''}
     </div>
 

@@ -114,6 +114,8 @@ export interface LineItem {
   dueDate?: string;
   expiryDate?: string;
   expectedDate?: string;
+  paymentDate?: string;
+  recipientName?: string;
   reference?: string;
   discountType?: 'percentage' | 'fixed';
   discountValue?: number;
@@ -129,6 +131,7 @@ export interface Quote {
     amount: number;
     status: QuoteStatus;
     subject?: string;
+    recipientName?: string;
     paymentMethod?: string;
     checkNumber?: string;
     bankName?: string;
@@ -152,6 +155,7 @@ export interface PurchaseOrder {
     expectedDate?: string;
     status: PurchaseOrderStatus;
     subject?: string;
+    recipientName?: string;
     paymentMethod?: string;
     checkNumber?: string;
     bankName?: string;
@@ -181,6 +185,7 @@ export interface Invoice {
     amountPaid: number; // Track received payments
     status: InvoiceStatus;
     subject?: string;
+    recipientName?: string;
     paymentMethod?: string;
     checkNumber?: string;
     bankName?: string;
@@ -205,6 +210,7 @@ export interface CreditNote {
     amount: number;
     status: CreditNoteStatus;
     subject?: string; // Reason
+    recipientName?: string;
     paymentMethod?: string;
     checkNumber?: string;
     bankName?: string;
@@ -263,6 +269,7 @@ export interface DeliveryNote {
     clientName: string;
     date: string;
     subject?: string; // Champ ajouté
+    recipientName?: string;
     paymentMethod?: string;
     checkNumber?: string;
     bankName?: string;

@@ -51,6 +51,7 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ settings, document, c
     const docBankName = document.bankName || document.lineItems[0]?.bankName || "";
     const docDueDate = (document as any).dueDate || (document.lineItems[0] as any)?.dueDate || "";
     const docExpectedDate = (document as any).expectedDate || document.lineItems[0]?.expectedDate || "";
+    const docRecipientName = (document as any).recipientName || (document.lineItems[0] as any)?.recipientName || "";
 
     const calculationMode = document.lineItems[0]?.calculationMode || 'piece';
     const legacyShowDimensions = (document as any).showDimensions || document.lineItems[0]?.showDimensions;
@@ -248,6 +249,9 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ settings, document, c
                                 {('purchaseOrderNumber' in document && document.purchaseOrderNumber) && (
                                     <p>{t('purchaseOrderNumber')} : <span className="font-medium text-neutral-900">{document.purchaseOrderNumber}</span></p>
                                 )}
+                                {docRecipientName && (
+                                    <p><span className="text-neutral-500">{language === 'ar' ? 'المستلم' : (language === 'es' ? 'Destinatario' : 'Destinataire')} :</span> <span className="font-bold text-emerald-700">{docRecipientName}</span></p>
+                                )}
                             </div>
                     </div>
                 </header>
@@ -266,6 +270,14 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ settings, document, c
                             <p>{client.email}</p>
                             <p>{client.phone}</p>
                         </div>
+                        {docRecipientName && (
+                            <div className="mt-3 pt-2.5 border-t border-dashed border-neutral-200">
+                                <p className="text-[11px] uppercase font-bold text-neutral-500 mb-0.5">
+                                    {language === 'ar' ? 'المستلم / موجه إلى :' : (language === 'es' ? 'Destinatario / Entregado a :' : 'Destinataire / Livré à :')}
+                                </p>
+                                <p className="font-bold text-sm text-emerald-700">{docRecipientName}</p>
+                            </div>
+                        )}
                     </div>
                 </section>
 
@@ -394,6 +406,27 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ settings, document, c
                                 <span>{t('totalTTC')}</span>
                                 <span>{totalTTC.toLocaleString('fr-MA', { style: 'currency', currency: settings?.defaultCurrencyCode || 'MAD' })}</span>
                             </div>
+                            {doc.amountPaid && doc.amountPaid > 0 ? (
+                                <div className="space-y-1 pt-2 border-t border-neutral-200">
+                                    <div className="flex justify-between text-emerald-700 font-semibold text-xs">
+                                        <span>
+                                            {language === 'ar' ? 'التسبيق (المدفوع)' : 'Avance réglée'}
+                                            {(doc.paymentDate || doc.lineItems[0]?.paymentDate) && (
+                                                <span className="text-[10px] text-neutral-500 font-normal ml-1">
+                                                    ({language === 'ar' ? 'بتاريخ' : 'le'} {new Date(doc.paymentDate || doc.lineItems[0]?.paymentDate!).toLocaleDateString(language === 'ar' ? 'ar-MA' : 'fr-FR')})
+                                                </span>
+                                            )}
+                                        </span>
+                                        <span className="font-bold">{doc.amountPaid.toLocaleString('fr-MA', { style: 'currency', currency: settings?.defaultCurrencyCode || 'MAD' })}</span>
+                                    </div>
+                                    {totalTTC - doc.amountPaid > 0.05 && (
+                                        <div className="flex justify-between text-amber-700 font-bold text-xs">
+                                            <span>{t('remaining')}</span>
+                                            <span>{(totalTTC - doc.amountPaid).toLocaleString('fr-MA', { style: 'currency', currency: settings?.defaultCurrencyCode || 'MAD' })}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : null}
                         </div>
                     )}
                 </section>

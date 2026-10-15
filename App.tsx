@@ -9,6 +9,7 @@ import { Session } from '@supabase/supabase-js';
 import { AnimatePresence, motion } from 'framer-motion';
 import { LanguageProvider } from './contexts/LanguageContext';
 import { generateUUID } from './src/utils/uuid';
+import { sortDocumentsByDate } from './utils/sorting';
 
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
@@ -115,10 +116,10 @@ const MainContent: React.FC = () => {
                 const deliveryData = await dbService.deliveryNotes.getAll().catch(e => { throw new Error(`Bons de livraison: ${e.message}`); });
                 const purchaseOrdersData = await dbService.purchaseOrders.getAll().catch(e => { throw new Error(`Commandes: ${e.message}`); });
 
-                setQuotes(quotesData.sort((a, b) => (b.documentId || b.id).localeCompare(a.documentId || a.id)));
-                setInvoices(invoicesData.sort((a, b) => (b.documentId || b.id).localeCompare(a.documentId || a.id)));
-                setDeliveryNotes(deliveryData.sort((a, b) => (b.documentId || b.id).localeCompare(a.documentId || a.id)));
-                setPurchaseOrders(purchaseOrdersData.sort((a, b) => (b.documentId || b.id).localeCompare(a.documentId || a.id)));
+                setQuotes(sortDocumentsByDate(quotesData, 'desc'));
+                setInvoices(sortDocumentsByDate(invoicesData, 'desc'));
+                setDeliveryNotes(sortDocumentsByDate(deliveryData, 'desc'));
+                setPurchaseOrders(sortDocumentsByDate(purchaseOrdersData, 'desc'));
 
                 // Group 3: Secondary data - Sequential for stability
                 try {
@@ -130,7 +131,7 @@ const MainContent: React.FC = () => {
                     const employeesData = await dbService.employees.getAll().catch(e => { console.warn("Employees load failed", e); return []; });
                     const attendancesData = await dbService.attendances.getAll().catch(e => { console.warn("Attendances load failed", e); return []; });
 
-                    setCreditNotes(creditNotesData.sort((a, b) => (b.documentId || b.id).localeCompare(a.documentId || a.id)));
+                    setCreditNotes(sortDocumentsByDate(creditNotesData, 'desc'));
                     setPayments(paymentsData.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
                     setStockMovements(movementsData.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
                     setExpenses(expensesData.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
@@ -579,7 +580,7 @@ const MainContent: React.FC = () => {
                 ...cleanQuoteData 
             };
             await dbService.quotes.add(newQuote);
-            setQuotes(prev => [newQuote, ...prev].sort((a, b) => (b.documentId || b.id).localeCompare(a.documentId || a.id)));
+            setQuotes(prev => sortDocumentsByDate([newQuote, ...prev], 'desc'));
         } catch (e: any) {
             console.error("Error creating quote", e);
             alert("Erreur création devis: " + e.message);
@@ -589,7 +590,7 @@ const MainContent: React.FC = () => {
     const updateQuote = async (updatedQuote: Quote) => {
         try {
             const savedQuote = await dbService.quotes.update(updatedQuote);
-            setQuotes(prev => prev.map(q => q.id === updatedQuote.id ? savedQuote : q));
+            setQuotes(prev => sortDocumentsByDate(prev.map(q => q.id === updatedQuote.id ? savedQuote : q), 'desc'));
         } catch (e: any) {
             console.error("Error updating quote", e);
             alert("Erreur mise à jour devis: " + e.message);
@@ -618,7 +619,14 @@ const MainContent: React.FC = () => {
         try {
             const { initialPayment, ...invoiceFields } = invoiceData;
             const documentId = invoiceFields.documentId || generateDocumentId('invoice', invoices);
-            const newInvoice: Invoice = { id: generateUUID(), documentId: documentId, amount: invoiceFields.subTotal + invoiceFields.vatAmount, amountPaid: initialPayment ? initialPayment.amount : 0, ...invoiceFields };
+            const newInvoice: Invoice = { 
+                id: generateUUID(), 
+                documentId: documentId, 
+                amount: invoiceFields.subTotal + invoiceFields.vatAmount, 
+                amountPaid: initialPayment ? initialPayment.amount : 0, 
+                paymentDate: (initialPayment && initialPayment.amount > 0) ? initialPayment.date : (invoiceFields.paymentDate || undefined),
+                ...invoiceFields 
+            };
             
             // Update stock if not draft
             if (newInvoice.status !== InvoiceStatus.Draft) {
@@ -646,9 +654,21 @@ const MainContent: React.FC = () => {
             }
 
             await dbService.invoices.add(newInvoice);
-            setInvoices(prev => [newInvoice, ...prev].sort((a, b) => (b.documentId || b.id).localeCompare(a.documentId || a.id)));
+            setInvoices(prev => sortDocumentsByDate([newInvoice, ...prev], 'desc'));
             if (initialPayment && initialPayment.amount > 0) {
-                 const newPayment: Payment = { id: generateUUID(), invoiceId: newInvoice.id, invoiceNumber: newInvoice.documentId || newInvoice.id, clientId: newInvoice.clientId, clientName: newInvoice.clientName, date: initialPayment.date, amount: initialPayment.amount, method: initialPayment.method, notes: 'Règlement à la création' };
+                 const newPayment: Payment = { 
+                     id: generateUUID(), 
+                     invoiceId: newInvoice.id, 
+                     invoiceNumber: newInvoice.documentId || newInvoice.id, 
+                     clientId: newInvoice.clientId, 
+                     clientName: newInvoice.clientName, 
+                     date: initialPayment.date, 
+                     amount: initialPayment.amount, 
+                     method: initialPayment.method || 'Espèces', 
+                     reference: initialPayment.checkNumber,
+                     bankName: initialPayment.bankName,
+                     notes: 'Règlement à la création' 
+                 };
                 await dbService.payments.add(newPayment);
                 setPayments(prev => [newPayment, ...prev]);
             }
@@ -667,7 +687,8 @@ const MainContent: React.FC = () => {
             const updatedInvoice: Invoice = { 
                 ...existingInvoice, 
                 ...invoiceFields,
-                date: invoiceFields.date || existingInvoice.date
+                date: invoiceFields.date || existingInvoice.date,
+                paymentDate: (initialPayment && initialPayment.amount > 0) ? initialPayment.date : (invoiceFields.paymentDate || existingInvoice.paymentDate)
             };
             updatedInvoice.id = id; 
 
@@ -722,11 +743,31 @@ const MainContent: React.FC = () => {
             }
 
             const savedInvoice = await dbService.invoices.update(updatedInvoice);
-            setInvoices(prev => prev.map(inv => inv.id === id ? savedInvoice : inv));
+            setInvoices(prev => sortDocumentsByDate(prev.map(inv => inv.id === id ? savedInvoice : inv), 'desc'));
             if (initialPayment && initialPayment.amount > 0) {
-                 const newPayment: Payment = { id: generateUUID(), invoiceId: id, invoiceNumber: updatedInvoice.documentId || updatedInvoice.id, clientId: updatedInvoice.clientId, clientName: updatedInvoice.clientName, date: initialPayment.date, amount: initialPayment.amount, method: initialPayment.method, notes: 'Règlement ajouté lors de la modification' };
+                 const newPayment: Payment = { 
+                     id: generateUUID(), 
+                     invoiceId: id, 
+                     invoiceNumber: updatedInvoice.documentId || updatedInvoice.id, 
+                     clientId: updatedInvoice.clientId, 
+                     clientName: updatedInvoice.clientName, 
+                     date: initialPayment.date, 
+                     amount: initialPayment.amount, 
+                     method: initialPayment.method || 'Espèces', 
+                     reference: initialPayment.checkNumber,
+                     bankName: initialPayment.bankName,
+                     notes: 'Règlement ajouté lors de la modification' 
+                 };
                 await dbService.payments.add(newPayment);
                 setPayments(prev => [newPayment, ...prev]);
+            } else if (invoiceFields.paymentDate) {
+                // If the user modified the payment date of an existing invoice, also sync the date in payments table
+                const relatedPayment = payments.find(p => p.invoiceId === id);
+                if (relatedPayment && relatedPayment.date !== invoiceFields.paymentDate) {
+                    const updatedP = { ...relatedPayment, date: invoiceFields.paymentDate };
+                    await dbService.payments.update(updatedP).catch(console.warn);
+                    setPayments(prev => prev.map(p => p.id === relatedPayment.id ? updatedP : p));
+                }
             }
         } catch (e: any) {
             console.error("Error updating invoice", e);
@@ -799,7 +840,7 @@ const MainContent: React.FC = () => {
                 } else if (newAmountPaid > 0) {
                     newStatus = InvoiceStatus.Partial;
                 }
-                const updatedInvoice = { ...invoice, amountPaid: newAmountPaid, status: newStatus, paymentDate: newStatus === InvoiceStatus.Paid ? paymentData.date : invoice.paymentDate };
+                const updatedInvoice = { ...invoice, amountPaid: newAmountPaid, status: newStatus, paymentDate: paymentData.date || invoice.paymentDate };
                 await dbService.invoices.update(updatedInvoice);
                 setInvoices(prev => prev.map(inv => inv.id === invoice.id ? updatedInvoice : inv));
             }
@@ -866,7 +907,7 @@ const MainContent: React.FC = () => {
         if (!quote) return;
         try {
             const documentId = generateDocumentId('invoice', invoices);
-            const newInvoiceData: Invoice = { id: generateUUID(), documentId: documentId, quoteId: quote.id, clientId: quote.clientId, clientName: quote.clientName, date: new Date().toISOString().split('T')[0], dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], status: InvoiceStatus.Pending, subject: quote.subject, reference: quote.reference, purchaseOrderNumber: quote.purchaseOrderNumber, lineItems: quote.lineItems, subTotal: quote.subTotal, vatAmount: quote.vatAmount, amount: quote.amount, amountPaid: 0 };
+            const newInvoiceData: Invoice = { id: generateUUID(), documentId: documentId, quoteId: quote.id, clientId: quote.clientId, clientName: quote.clientName, recipientName: quote.recipientName || (quote.lineItems[0] as any)?.recipientName, date: new Date().toISOString().split('T')[0], dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], status: InvoiceStatus.Pending, subject: quote.subject, reference: quote.reference, purchaseOrderNumber: quote.purchaseOrderNumber, lineItems: quote.lineItems, subTotal: quote.subTotal, vatAmount: quote.vatAmount, amount: quote.amount, amountPaid: 0 };
             
             // Deduct stock if not draft
             if (newInvoiceData.status !== InvoiceStatus.Draft) {
@@ -894,7 +935,7 @@ const MainContent: React.FC = () => {
             }
 
             await dbService.invoices.add(newInvoiceData);
-            setInvoices(prev => [newInvoiceData, ...prev].sort((a, b) => (b.documentId || b.id).localeCompare(a.documentId || a.id)));
+            setInvoices(prev => sortDocumentsByDate([newInvoiceData, ...prev], 'desc'));
             await updateQuoteStatus(quoteId, QuoteStatus.Converted);
         } catch (e: any) {
             alert("Erreur conversion: " + e.message);
@@ -942,7 +983,7 @@ const MainContent: React.FC = () => {
             }
 
             await dbService.creditNotes.add(newCreditNote);
-            setCreditNotes(prev => [newCreditNote, ...prev].sort((a, b) => (b.documentId || b.id).localeCompare(a.documentId || a.id)));
+            setCreditNotes(prev => sortDocumentsByDate([newCreditNote, ...prev], 'desc'));
             return newCreditNote;
         } catch (e: any) {
             console.error("Error creating credit note", e);
@@ -1014,7 +1055,7 @@ const MainContent: React.FC = () => {
             }
 
             const savedCreditNote = await dbService.creditNotes.update(updatedCreditNote);
-            setCreditNotes(prev => prev.map(cn => cn.id === updatedCreditNote.id ? savedCreditNote : cn));
+            setCreditNotes(prev => sortDocumentsByDate(prev.map(cn => cn.id === updatedCreditNote.id ? savedCreditNote : cn), 'desc'));
         } catch (e: any) {
             console.error("Error updating credit note", e);
             alert("Erreur mise à jour avoir: " + e.message);
@@ -1105,7 +1146,7 @@ const MainContent: React.FC = () => {
             const documentId = noteData.documentId || generateDocumentId('deliveryNote', deliveryNotes);
             const newNote: DeliveryNote = { id: generateUUID(), documentId: documentId, ...noteData };
             await dbService.deliveryNotes.add(newNote);
-            setDeliveryNotes(prev => [newNote, ...prev].sort((a, b) => (b.documentId || b.id).localeCompare(a.documentId || a.id)));
+            setDeliveryNotes(prev => sortDocumentsByDate([newNote, ...prev], 'desc'));
             // Only deduct stock if this BL is NOT created from an existing invoice that already deducted stock
             const sourceInvoice = noteData.invoiceId ? invoices.find(inv => inv.documentId === noteData.invoiceId || inv.id === noteData.invoiceId) : null;
             const stockAlreadyDeducted = sourceInvoice && sourceInvoice.status !== InvoiceStatus.Draft;
@@ -1184,7 +1225,7 @@ const MainContent: React.FC = () => {
             }
 
             const savedNote = await dbService.deliveryNotes.update(updatedNote); 
-            setDeliveryNotes(prev => prev.map(n => n.id === updatedNote.id ? savedNote : n));
+            setDeliveryNotes(prev => sortDocumentsByDate(prev.map(n => n.id === updatedNote.id ? savedNote : n), 'desc'));
         } catch (e: any) {
             console.error("Error updating delivery note", e);
             alert("Erreur mise à jour BL: " + e.message);
@@ -1245,6 +1286,7 @@ const MainContent: React.FC = () => {
                 documentId: documentId, 
                 clientId: note.clientId, 
                 clientName: note.clientName, 
+                recipientName: note.recipientName || (note.lineItems[0] as any)?.recipientName,
                 date: new Date().toISOString().split('T')[0], 
                 dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], 
                 status: InvoiceStatus.Pending, 
@@ -1261,7 +1303,7 @@ const MainContent: React.FC = () => {
             // Note: We do NOT deduct stock here because creating a Delivery Note already deducted the stock.
             
             await dbService.invoices.add(newInvoiceData);
-            setInvoices(prev => [newInvoiceData, ...prev].sort((a, b) => (b.documentId || b.id).localeCompare(a.documentId || a.id)));
+            setInvoices(prev => sortDocumentsByDate([newInvoiceData, ...prev], 'desc'));
             
             // Link BL to Invoice
             const updatedNote = { ...note, invoiceId: newInvoiceData.documentId || newInvoiceData.id };
@@ -1312,7 +1354,7 @@ const MainContent: React.FC = () => {
             const documentId = orderData.documentId || generateDocumentId('purchaseOrder', purchaseOrders);
             const newOrder: PurchaseOrder = { id: generateUUID(), documentId: documentId, ...orderData };
             await dbService.purchaseOrders.add(newOrder);
-            setPurchaseOrders(prev => [newOrder, ...prev].sort((a, b) => (b.documentId || b.id).localeCompare(a.documentId || a.id)));
+            setPurchaseOrders(prev => sortDocumentsByDate([newOrder, ...prev], 'desc'));
         } catch (e: any) {
             console.error("Error creating purchase order", e);
             alert("Erreur création BC: " + e.message);
@@ -1322,7 +1364,7 @@ const MainContent: React.FC = () => {
     const updatePurchaseOrder = async (updatedOrder: PurchaseOrder) => {
         try {
             const savedOrder = await dbService.purchaseOrders.update(updatedOrder);
-            setPurchaseOrders(prev => prev.map(o => o.id === updatedOrder.id ? savedOrder : o));
+            setPurchaseOrders(prev => sortDocumentsByDate(prev.map(o => o.id === updatedOrder.id ? savedOrder : o), 'desc'));
         } catch (e: any) {
             console.error("Error updating purchase order", e);
             alert("Erreur mise à jour commande: " + e.message);

@@ -50,6 +50,7 @@ const CreateCreditNoteModal: React.FC<CreateCreditNoteModalProps> = ({
     const [checkNumber, setCheckNumber] = useState('');
     const [bankName, setBankName] = useState('');
     const [notes, setNotes] = useState('');
+    const [recipientName, setRecipientName] = useState('');
     const [calculationMode, setCalculationMode] = useState<'piece' | 'm2' | 'ml' | 'kg' | 'days'>('piece');
     const [lineItems, setLineItems] = useState<LineItem[]>([]);
 
@@ -112,6 +113,7 @@ const CreateCreditNoteModal: React.FC<CreateCreditNoteModalProps> = ({
         const invRef = inv.documentId || inv.id;
         setReason(`Avoir sur facture ${invRef}`);
         setShowSubjectField(true);
+        setRecipientName(inv.recipientName || inv.lineItems[0]?.recipientName || '');
         setPaymentMethod(inv.paymentMethod || '');
         setShowPaymentMethodField(!!inv.paymentMethod);
         setCheckNumber(inv.checkNumber || '');
@@ -147,6 +149,9 @@ const CreateCreditNoteModal: React.FC<CreateCreditNoteModalProps> = ({
                 setReason(initialReason);
                 setShowSubjectField(!!initialReason);
 
+                const initialRecipient = creditNoteToEdit.recipientName || creditNoteToEdit.lineItems[0]?.recipientName || '';
+                setRecipientName(initialRecipient);
+
                 const initialPaymentMethod = creditNoteToEdit.paymentMethod || creditNoteToEdit.lineItems[0]?.paymentMethod || '';
                 setPaymentMethod(initialPaymentMethod);
                 setShowPaymentMethodField(!!initialPaymentMethod);
@@ -171,6 +176,7 @@ const CreateCreditNoteModal: React.FC<CreateCreditNoteModalProps> = ({
             } else if (prefilledInvoice) {
                 setDocumentId(generateDocumentId ? generateDocumentId() : '');
                 setDate(new Date().toISOString().split('T')[0]);
+                setRecipientName(prefilledInvoice.recipientName || prefilledInvoice.lineItems[0]?.recipientName || '');
                 setIsDiscountEnabled(false);
                 setDiscountType('percentage');
                 setDiscountValue('0');
@@ -182,6 +188,7 @@ const CreateCreditNoteModal: React.FC<CreateCreditNoteModalProps> = ({
                 setClientId('');
                 setDocumentId(generateDocumentId ? generateDocumentId() : '');
                 setDate(new Date().toISOString().split('T')[0]);
+                setRecipientName('');
                 setReason('');
                 setShowSubjectField(false);
                 setPaymentMethod('');
@@ -360,6 +367,7 @@ const CreateCreditNoteModal: React.FC<CreateCreditNoteModalProps> = ({
             updatedLineItems[0] = { 
                 ...updatedLineItems[0], 
                 calculationMode,
+                recipientName: recipientName.trim() || undefined,
                 subject: showSubjectField ? reason : undefined,
                 notes,
                 paymentMethod: showPaymentMethodField ? paymentMethod : undefined,
@@ -375,6 +383,7 @@ const CreateCreditNoteModal: React.FC<CreateCreditNoteModalProps> = ({
             documentId: documentId || undefined,
             clientId, 
             clientName: clientNameDisplay, 
+            recipientName: recipientName.trim() || undefined,
             date: effectiveDate, 
             subject: showSubjectField ? reason : undefined, 
             paymentMethod: showPaymentMethodField ? paymentMethod : undefined, 
@@ -501,6 +510,16 @@ const CreateCreditNoteModal: React.FC<CreateCreditNoteModalProps> = ({
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <label className="block text-sm font-bold text-slate-700 ml-1">{t('recipientName')}</label>
+                            <input 
+                                type="text" 
+                                value={recipientName} 
+                                onChange={(e) => setRecipientName(e.target.value)} 
+                                placeholder={t('recipientPlaceholder')} 
+                                className="block w-full rounded-xl border-slate-200 bg-slate-50 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm h-12"
+                            />
+                        </div>
                         
                         {showSubjectField ? (
                             <div className="space-y-1">

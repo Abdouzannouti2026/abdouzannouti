@@ -35,6 +35,7 @@ const CreateQuoteModal: React.FC<CreateQuoteModalProps> = ({ isOpen, onClose, on
     const [checkNumber, setCheckNumber] = useState('');
     const [bankName, setBankName] = useState('');
     const [purchaseOrderNumber, setPurchaseOrderNumber] = useState('');
+    const [recipientName, setRecipientName] = useState('');
     const [notes, setNotes] = useState('');
     const [calculationMode, setCalculationMode] = useState<'piece' | 'm2' | 'ml' | 'kg' | 'days'>('piece');
     const [lineItems, setLineItems] = useState<LineItem[]>([]);
@@ -110,6 +111,9 @@ const CreateQuoteModal: React.FC<CreateQuoteModalProps> = ({ isOpen, onClose, on
                 const initialSubject = quoteToEdit.subject || quoteToEdit.lineItems[0]?.subject || '';
                 setSubject(initialSubject);
                 setShowSubjectField(!!initialSubject);
+
+                const initialRecipient = quoteToEdit.recipientName || quoteToEdit.lineItems[0]?.recipientName || '';
+                setRecipientName(initialRecipient);
                 
                 const initialPaymentMethod = quoteToEdit.paymentMethod || quoteToEdit.lineItems[0]?.paymentMethod || '';
                 setPaymentMethod(initialPaymentMethod);
@@ -139,6 +143,7 @@ const CreateQuoteModal: React.FC<CreateQuoteModalProps> = ({ isOpen, onClose, on
                 setClientId('');
                 setDocumentId(generateDocumentId ? generateDocumentId() : '');
                 setDate(new Date().toISOString().split('T')[0]);
+                setRecipientName('');
                 setExpiryDate('');
                 setShowExpiryDateField(false);
                 setSubject('');
@@ -322,6 +327,7 @@ const CreateQuoteModal: React.FC<CreateQuoteModalProps> = ({ isOpen, onClose, on
             updatedLineItems[0] = { 
                 ...updatedLineItems[0], 
                 calculationMode,
+                recipientName: recipientName.trim() || undefined,
                 subject: showSubjectField ? subject : undefined,
                 expiryDate: showExpiryDateField ? expiryDate : undefined,
                 notes,
@@ -336,6 +342,7 @@ const CreateQuoteModal: React.FC<CreateQuoteModalProps> = ({ isOpen, onClose, on
         const quoteData = {
             documentId: documentId || undefined,
             clientId, clientName: clientNameDisplay, 
+            recipientName: recipientName.trim() || undefined,
             date: effectiveDate, 
             expiryDate: showExpiryDateField && expiryDate ? normalizeDateForInput(expiryDate) : undefined, 
             subject: showSubjectField ? subject : undefined, 
@@ -412,6 +419,16 @@ const CreateQuoteModal: React.FC<CreateQuoteModalProps> = ({ isOpen, onClose, on
                         <div className="space-y-1">
                             <label className="block text-sm font-bold text-slate-700 ml-1">{t('date')} *</label>
                             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="block w-full rounded-xl border-slate-200 bg-slate-50 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm h-12"/>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="block text-sm font-bold text-slate-700 ml-1">{t('recipientName')}</label>
+                            <input 
+                                type="text" 
+                                value={recipientName} 
+                                onChange={(e) => setRecipientName(e.target.value)} 
+                                placeholder={t('recipientPlaceholder')} 
+                                className="block w-full rounded-xl border-slate-200 bg-slate-50 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm h-12"
+                            />
                         </div>
                         
                         {showExpiryDateField ? (

@@ -28,3 +28,10 @@ ALTER TABLE IF EXISTS public.credit_notes
 -- 3. Mise à jour de l'index sur settings
 CREATE INDEX IF NOT EXISTS idx_settings_company ON public.settings(company_id);
 
+-- 4. Champ Destinataire / À l'attention de (recipientName) pour Bons, Devis, Avoirs, BL, BC
+ALTER TABLE IF EXISTS public.invoices ADD COLUMN IF NOT EXISTS "recipientName" TEXT;
+ALTER TABLE IF EXISTS public.quotes ADD COLUMN IF NOT EXISTS "recipientName" TEXT;
+ALTER TABLE IF EXISTS public.credit_notes ADD COLUMN IF NOT EXISTS "recipientName" TEXT;
+ALTER TABLE IF EXISTS public.delivery_notes ADD COLUMN IF NOT EXISTS "recipientName" TEXT;
+ALTER TABLE IF EXISTS public.purchase_orders ADD COLUMN IF NOT EXISTS "recipientName" TEXT;
+

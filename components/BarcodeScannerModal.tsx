@@ -154,7 +154,7 @@ const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
       ]);
       hints.set(DecodeHintType.TRY_HARDER, true);
 
-      const codeReader = new BrowserMultiFormatReader(hints, 80); // 80ms interval between scans (~12 FPS)
+      const codeReader = new BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: 80 });
       readerRef.current = codeReader;
 
       // Enumerate available video inputs

@@ -12,6 +12,7 @@ import ThermalTicketModal from './ThermalTicketModal';
 import { generatePDF, printDocument, printThermalTicket } from '../services/pdfService';
 import { useLanguage } from '../contexts/LanguageContext';
 import DocumentPreviewModal from './DocumentPreviewModal';
+import { compareDocumentsByDate } from '../utils/sorting';
 
 const getStatusBadge = (status: InvoiceStatus) => {
     switch (status) {
@@ -49,6 +50,7 @@ const Invoices: React.FC<InvoicesProps> = ({ invoices, onUpdateInvoiceStatus, on
     const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState<Invoice | null>(null);
     const [invoiceToEdit, setInvoiceToEdit] = useState<Invoice | null>(null);
     const [paymentAmount, setPaymentAmount] = useState<number>(0);
+    const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().split('T')[0]);
     const [paymentMethod, setPaymentMethod] = useState<'Virement' | 'Chèque' | 'Espèces' | 'Carte Bancaire'>('Virement');
     const [checkNumber, setCheckNumber] = useState('');
     const [bankName, setBankName] = useState('');
@@ -81,16 +83,20 @@ const Invoices: React.FC<InvoicesProps> = ({ invoices, onUpdateInvoiceStatus, on
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
-    // Pagination State
+    // Pagination & Sorting State
     const [currentPage, setCurrentPage] = useState(1);
+    const [dateSortOrder, setDateSortOrder] = useState<'desc' | 'asc'>('desc');
     const itemsPerPage = 10;
-    const filteredInvoices = invoices.filter(invoice => {
-        const term = searchTerm.toLowerCase();
-        return (
-            (invoice.documentId || invoice.id).toLowerCase().includes(term) ||
-            (invoice.clientName || '').toLowerCase().includes(term)
-        );
-    });
+    const filteredInvoices = invoices
+        .filter(invoice => {
+            const term = searchTerm.toLowerCase();
+            return (
+                (invoice.documentId || invoice.id).toLowerCase().includes(term) ||
+                (invoice.clientName || '').toLowerCase().includes(term) ||
+                (invoice.recipientName || (invoice.lineItems[0] as any)?.recipientName || '').toLowerCase().includes(term)
+            );
+        })
+        .sort((a, b) => compareDocumentsByDate(a, b, dateSortOrder));
     const totalPages = Math.ceil(filteredInvoices.length / itemsPerPage);
     const startIndex = (currentPage - 1) * itemsPerPage;
     const paginatedInvoices = filteredInvoices.slice(startIndex, startIndex + itemsPerPage);
@@ -192,6 +198,7 @@ const Invoices: React.FC<InvoicesProps> = ({ invoices, onUpdateInvoiceStatus, on
     const openPaymentModal = (invoice: Invoice) => {
         setSelectedInvoiceForPayment(invoice);
         setPaymentAmount(invoice.amount - (invoice.amountPaid || 0));
+        setPaymentDate(new Date().toISOString().split('T')[0]);
     };
 
     const handleEditClick = (invoice: Invoice) => {
@@ -227,7 +234,7 @@ const Invoices: React.FC<InvoicesProps> = ({ invoices, onUpdateInvoiceStatus, on
             invoiceNumber: selectedInvoiceForPayment.documentId || selectedInvoiceForPayment.id,
             clientId: selectedInvoiceForPayment.clientId,
             clientName: selectedInvoiceForPayment.clientName,
-            date: new Date().toISOString().split('T')[0],
+            date: paymentDate || new Date().toISOString().split('T')[0],
             amount: paymentAmount,
             method: paymentMethod,
             reference: paymentMethod === 'Chèque' ? checkNumber : undefined,
@@ -383,17 +390,30 @@ const Invoices: React.FC<InvoicesProps> = ({ invoices, onUpdateInvoiceStatus, on
                         <h3 className="text-lg font-bold mb-4">{t('paymentRecorded')}</h3>
                         <p className="text-sm text-gray-500 mb-4">{t('invoices')} {selectedInvoiceForPayment.documentId || selectedInvoiceForPayment.id}</p>
                         <form onSubmit={handlePaymentSubmit} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700">{t('amount')}</label>
-                                <input 
-                                    type="number" 
-                                    step="0.01" 
-                                    max={selectedInvoiceForPayment.amount - (selectedInvoiceForPayment.amountPaid || 0)}
-                                    value={paymentAmount} 
-                                    onChange={e => setPaymentAmount(parseFloat(e.target.value))}
-                                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
-                                />
-                                <p className="text-xs text-gray-500 mt-1">{t('remaining')} : {(selectedInvoiceForPayment.amount - (selectedInvoiceForPayment.amountPaid || 0)).toLocaleString('fr-FR', { style: 'currency', currency: companySettings?.defaultCurrencyCode || 'MAD' })}</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-700 uppercase mb-1">{t('amount')}</label>
+                                    <input 
+                                        type="number" 
+                                        step="0.01" 
+                                        max={selectedInvoiceForPayment.amount - (selectedInvoiceForPayment.amountPaid || 0)}
+                                        value={paymentAmount} 
+                                        onChange={e => setPaymentAmount(parseFloat(e.target.value))}
+                                        className="mt-1 block w-full rounded-xl border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 font-bold text-sm h-10 px-3"
+                                    />
+                                    <p className="text-[11px] text-gray-500 mt-1">{t('remaining')} : {(selectedInvoiceForPayment.amount - (selectedInvoiceForPayment.amountPaid || 0)).toLocaleString('fr-FR', { style: 'currency', currency: companySettings?.defaultCurrencyCode || 'MAD' })}</p>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                                        {language === 'ar' ? 'تاريخ الدفعة / التسبيق' : (language === 'es' ? 'Fecha de pago' : 'Date du paiement')}
+                                    </label>
+                                    <input 
+                                        type="date" 
+                                        value={paymentDate} 
+                                        onChange={e => setPaymentDate(e.target.value)}
+                                        className="mt-1 block w-full rounded-xl border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 font-semibold text-xs sm:text-sm h-10 px-3 text-slate-700"
+                                    />
+                                </div>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700">{t('paymentMethod')}</label>
@@ -447,17 +467,28 @@ const Invoices: React.FC<InvoicesProps> = ({ invoices, onUpdateInvoiceStatus, on
 
             <div className="card-base overflow-hidden">
                 <div className="p-4 border-b border-slate-100 bg-white">
-                    <div className="relative">
-                        <div className={`pointer-events-none absolute inset-y-0 flex items-center ${isRTL ? 'right-0 pr-3.5' : 'left-0 pl-3.5'}`}>
-                            <Search className="h-4 w-4 text-slate-400" aria-hidden="true" />
+                    <div className="flex items-center gap-3">
+                        <div className="relative flex-1">
+                            <div className={`pointer-events-none absolute inset-y-0 flex items-center ${isRTL ? 'right-0 pr-3.5' : 'left-0 pl-3.5'}`}>
+                                <Search className="h-4 w-4 text-slate-400" aria-hidden="true" />
+                            </div>
+                            <input
+                                type="search"
+                                placeholder={t('search')}
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className={`block w-full rounded-xl border border-slate-200 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 ${isRTL ? 'pr-10 pl-4' : 'pl-10 pr-4'}`}
+                            />
                         </div>
-                        <input
-                            type="search"
-                            placeholder={t('search')}
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className={`block w-full rounded-xl border border-slate-200 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 ${isRTL ? 'pr-10 pl-4' : 'pl-10 pr-4'}`}
-                        />
+                        <button
+                            type="button"
+                            onClick={() => setDateSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 hover:border-slate-300 text-slate-700 transition-all select-none shrink-0"
+                            title={dateSortOrder === 'desc' ? (language === 'ar' ? 'الأحدث أولاً (اضغط للتغيير)' : 'Plus récent en premier (cliquer pour inverser)') : (language === 'ar' ? 'الأقدم أولاً (اضغط للتغيير)' : 'Plus ancien en premier (cliquer pour inverser)')}
+                        >
+                            <span className="text-emerald-600 font-bold text-sm leading-none">{dateSortOrder === 'desc' ? '↓' : '↑'}</span>
+                            <span className="hidden sm:inline">{dateSortOrder === 'desc' ? (language === 'ar' ? 'الأحدث أولاً' : 'Plus récent') : (language === 'ar' ? 'الأقدم أولاً' : 'Plus ancien')}</span>
+                        </button>
                     </div>
                 </div>
                 {/* Desktop Table View */}
@@ -466,9 +497,22 @@ const Invoices: React.FC<InvoicesProps> = ({ invoices, onUpdateInvoiceStatus, on
                         <thead className="bg-slate-50/70">
                             <tr>
                                 <th scope="col" className={`px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-slate-500 ${isRTL ? 'text-right' : 'text-left'}`}>#</th>
-                                <th scope="col" className={`px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-slate-500 ${isRTL ? 'text-right' : 'text-left'}`}>{t('date')}</th>
+                                <th 
+                                    scope="col" 
+                                    onClick={() => setDateSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+                                    className={`px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-slate-500 cursor-pointer hover:text-emerald-700 transition-colors select-none ${isRTL ? 'text-right' : 'text-left'}`}
+                                    title={dateSortOrder === 'desc' ? (language === 'ar' ? 'الترتيب: من الأحدث إلى الأقدم' : 'Tri : Plus récent en premier') : (language === 'ar' ? 'الترتيب: من الأقدم إلى الأحدث' : 'Tri : Plus ancien en premier')}
+                                >
+                                    <div className={`inline-flex items-center gap-1.5 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                                        <span>{t('date')}</span>
+                                        <span className="text-emerald-600 font-bold text-sm leading-none">{dateSortOrder === 'desc' ? '↓' : '↑'}</span>
+                                    </div>
+                                </th>
                                 <th scope="col" className={`px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-slate-500 ${isRTL ? 'text-right' : 'text-left'}`}>{t('client')}</th>
                                 <th scope="col" className={`px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-slate-500 ${isRTL ? 'text-right' : 'text-left'}`}>{t('amount')}</th>
+                                <th scope="col" className={`hidden md:table-cell px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-slate-500 ${isRTL ? 'text-right' : 'text-left'}`}>
+                                    {language === 'ar' ? 'التسبيق / التاريخ' : (language === 'es' ? 'Anticipo / Fecha' : 'Avance / Date')}
+                                </th>
                                 <th scope="col" className={`hidden lg:table-cell px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-slate-500 ${isRTL ? 'text-right' : 'text-left'}`}>{t('remaining')}</th>
                                 <th scope="col" className={`px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-slate-500 ${isRTL ? 'text-right' : 'text-left'}`}>{t('status')}</th>
                                 <th scope="col" className="relative px-6 py-3.5 text-right"><span className="sr-only">{t('actions')}</span></th>
@@ -481,9 +525,34 @@ const Invoices: React.FC<InvoicesProps> = ({ invoices, onUpdateInvoiceStatus, on
                                     return (
                                     <tr key={invoice.id} className="hover:bg-slate-50/80 transition-colors duration-150">
                                         <td className={`whitespace-nowrap px-6 py-4 text-sm font-bold text-emerald-600 ${isRTL ? 'text-right' : 'text-left'}`}>{invoice.documentId || invoice.id}</td>
-                                        <td className={`whitespace-nowrap px-6 py-4 text-sm font-medium text-slate-500 ${isRTL ? 'text-right' : 'text-left'}`}>{new Date(invoice.date).toLocaleDateString('fr-FR')}</td>
-                                        <td className={`whitespace-nowrap px-6 py-4 text-sm font-bold text-slate-900 max-w-[160px] truncate ${isRTL ? 'text-right' : 'text-left'}`}>{invoice.clientName}</td>
+                                        <td className={`whitespace-nowrap px-6 py-4 text-sm font-medium text-slate-500 ${isRTL ? 'text-right' : 'text-left'}`}>{new Date(invoice.date).toLocaleDateString(language === 'ar' ? 'ar-MA' : 'fr-FR')}</td>
+                                        <td className={`whitespace-nowrap px-6 py-4 text-sm font-bold text-slate-900 max-w-[180px] truncate ${isRTL ? 'text-right' : 'text-left'}`}>
+                                            <div>{invoice.clientName}</div>
+                                            {(invoice.recipientName || (invoice.lineItems[0] as any)?.recipientName) && (
+                                                <div className="text-xs font-normal text-emerald-700 mt-0.5 truncate flex items-center gap-1">
+                                                    <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded-md border border-emerald-200">
+                                                        {language === 'ar' ? 'المستلم:' : 'Dest:'} {invoice.recipientName || (invoice.lineItems[0] as any)?.recipientName}
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </td>
                                         <td className={`whitespace-nowrap px-6 py-4 text-sm font-extrabold text-slate-900 ${isRTL ? 'text-right' : 'text-left'}`}>{invoice.amount.toLocaleString('fr-FR', { style: 'currency', currency: companySettings?.defaultCurrencyCode || 'MAD' })}</td>
+                                        <td className={`hidden md:table-cell whitespace-nowrap px-6 py-4 text-sm ${isRTL ? 'text-right' : 'text-left'}`}>
+                                            {invoice.amountPaid && invoice.amountPaid > 0 ? (
+                                                <div>
+                                                    <span className="font-bold text-emerald-600">
+                                                        {invoice.amountPaid.toLocaleString('fr-FR', { style: 'currency', currency: companySettings?.defaultCurrencyCode || 'MAD' })}
+                                                    </span>
+                                                    {invoice.paymentDate && (
+                                                        <div className="text-[11px] text-slate-400 font-medium">
+                                                            {new Date(invoice.paymentDate).toLocaleDateString(language === 'ar' ? 'ar-MA' : 'fr-FR')}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <span className="text-slate-300 font-medium">-</span>
+                                            )}
+                                        </td>
                                         <td className={`hidden lg:table-cell whitespace-nowrap px-6 py-4 text-sm font-bold text-rose-600 ${isRTL ? 'text-right' : 'text-left'}`}>{remaining > 0 ? remaining.toLocaleString('fr-FR', { style: 'currency', currency: companySettings?.defaultCurrencyCode || 'MAD' }) : '-'}</td>
                                         <td className={`whitespace-nowrap px-6 py-4 text-sm ${isRTL ? 'text-right' : 'text-left'}`}>
                                             <span className={getStatusBadge(invoice.status)}>
@@ -503,7 +572,7 @@ const Invoices: React.FC<InvoicesProps> = ({ invoices, onUpdateInvoiceStatus, on
                                 )})
                             ) : (
                                 <tr>
-                                    <td colSpan={7} className="text-center py-16 px-6">
+                                    <td colSpan={8} className="text-center py-16 px-6">
                                         <div className="flex flex-col items-center justify-center">
                                             <FileText className="h-10 w-10 text-slate-300 mb-3" />
                                             <h3 className="text-sm font-bold text-slate-800">{language === 'ar' ? 'لم يتم العثور على أي وصل' : 'Aucun bon trouvé'}</h3>
@@ -531,6 +600,13 @@ const Invoices: React.FC<InvoicesProps> = ({ invoices, onUpdateInvoiceStatus, on
                                                 </span>
                                             </div>
                                             <p className="text-sm font-bold text-slate-900 truncate pr-2">{invoice.clientName}</p>
+                                            {(invoice.recipientName || (invoice.lineItems[0] as any)?.recipientName) && (
+                                                <p className="text-xs text-emerald-700 font-semibold truncate mt-0.5">
+                                                    <span className="text-[10px] bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded border border-emerald-200">
+                                                        {language === 'ar' ? 'المستلم:' : 'Dest:'} {invoice.recipientName || (invoice.lineItems[0] as any)?.recipientName}
+                                                    </span>
+                                                </p>
+                                            )}
                                         </div>
                                         <button 
                                             onClick={(e) => toggleMenu(e, invoice.id)}
@@ -546,9 +622,20 @@ const Invoices: React.FC<InvoicesProps> = ({ invoices, onUpdateInvoiceStatus, on
                                             <p className="text-sm font-extrabold text-slate-900">
                                                 {invoice.amount.toLocaleString('fr-FR', { style: 'currency', currency: companySettings?.defaultCurrencyCode || 'MAD', maximumFractionDigits: 0 })}
                                             </p>
+                                            {invoice.amountPaid && invoice.amountPaid > 0 ? (
+                                                <p className="text-[11px] text-emerald-600 font-bold mt-1">
+                                                    {language === 'ar' ? 'التسبيق: ' : 'Avance: '}
+                                                    {invoice.amountPaid.toLocaleString('fr-FR', { style: 'currency', currency: companySettings?.defaultCurrencyCode || 'MAD', maximumFractionDigits: 0 })}
+                                                    {invoice.paymentDate && (
+                                                        <span className="text-[10px] text-slate-400 font-medium ml-1">
+                                                            ({new Date(invoice.paymentDate).toLocaleDateString(language === 'ar' ? 'ar-MA' : 'fr-FR')})
+                                                        </span>
+                                                    )}
+                                                </p>
+                                            ) : null}
                                         </div>
                                         <div className="text-right">
-                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{new Date(invoice.date).toLocaleDateString('fr-FR')}</p>
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">{new Date(invoice.date).toLocaleDateString(language === 'ar' ? 'ar-MA' : 'fr-FR')}</p>
                                             {remaining > 0 && (
                                                 <p className="text-[11px] text-rose-600 font-bold">
                                                     {t('remaining')}: {remaining.toLocaleString('fr-FR', { style: 'currency', currency: companySettings?.defaultCurrencyCode || 'MAD', maximumFractionDigits: 0 })}

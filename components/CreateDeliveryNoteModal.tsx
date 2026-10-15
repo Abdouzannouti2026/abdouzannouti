@@ -30,6 +30,7 @@ const CreateDeliveryNoteModal: React.FC<CreateDeliveryNoteModalProps> = ({ isOpe
 
     const [clientId, setClientId] = useState('');
     const [documentId, setDocumentId] = useState('');
+    const [recipientName, setRecipientName] = useState('');
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [subject, setSubject] = useState('');
     const [purchaseOrderNumber, setPurchaseOrderNumber] = useState('');
@@ -98,6 +99,7 @@ const CreateDeliveryNoteModal: React.FC<CreateDeliveryNoteModalProps> = ({ isOpe
                 const initialClientId = noteToEdit.clientId || 'client-comptoir';
                 setClientId(initialClientId);
                 setDocumentId(noteToEdit.documentId || '');
+                setRecipientName(noteToEdit.recipientName || (noteToEdit.lineItems[0] as any)?.recipientName || '');
                 const cleanDate = normalizeDateForInput(noteToEdit.date);
                 setDate(cleanDate);
                 const initialSubject = noteToEdit.subject || noteToEdit.lineItems[0]?.subject || '';
@@ -129,6 +131,7 @@ const CreateDeliveryNoteModal: React.FC<CreateDeliveryNoteModalProps> = ({ isOpe
             } else {
                 setClientId('');
                 setDocumentId(generateDocumentId ? generateDocumentId() : '');
+                setRecipientName('');
                 setDate(new Date().toISOString().split('T')[0]);
                 setSubject('');
                 setShowSubjectField(false);
@@ -388,6 +391,7 @@ const CreateDeliveryNoteModal: React.FC<CreateDeliveryNoteModalProps> = ({ isOpe
             updatedLineItems[0] = { 
                 ...updatedLineItems[0], 
                 calculationMode,
+                recipientName: recipientName.trim() || undefined,
                 subject: showSubjectField ? subject : undefined,
                 paymentMethod: showPaymentMethodField ? paymentMethod : undefined,
                 checkNumber: (showPaymentMethodField && paymentMethod === 'Chèque') ? checkNumber : undefined,
@@ -405,6 +409,7 @@ const CreateDeliveryNoteModal: React.FC<CreateDeliveryNoteModalProps> = ({ isOpe
                 documentId: documentId || undefined,
                 clientId: savedClientId, 
                 clientName: clientNameDisplay, 
+                recipientName: recipientName.trim() || undefined,
                 date: effectiveDate, 
                 subject: showSubjectField ? subject : undefined, 
                 purchaseOrderNumber: showPurchaseOrderField ? purchaseOrderNumber : undefined, 
@@ -476,6 +481,16 @@ const CreateDeliveryNoteModal: React.FC<CreateDeliveryNoteModalProps> = ({ isOpe
                         <div className="space-y-1">
                             <label className="block text-sm font-bold text-slate-700 ml-1">{t('date')} *</label>
                             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="block w-full rounded-xl border-slate-200 bg-slate-50 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm h-12"/>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="block text-sm font-bold text-slate-700 ml-1">{t('recipientName')}</label>
+                            <input 
+                                type="text" 
+                                value={recipientName} 
+                                onChange={(e) => setRecipientName(e.target.value)} 
+                                placeholder={t('recipientPlaceholder')} 
+                                className="block w-full rounded-xl border-slate-200 bg-slate-50 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm h-12"
+                            />
                         </div>
 
                         {showSubjectField ? (

@@ -31,6 +31,7 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
 
     const [clientId, setClientId] = useState('');
     const [documentId, setDocumentId] = useState('');
+    const [recipientName, setRecipientName] = useState('');
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [dueDate, setDueDate] = useState('');
     const [subject, setSubject] = useState('');
@@ -48,6 +49,10 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
     
     const [existingAmountPaid, setExistingAmountPaid] = useState<number>(0); 
     const [newPaymentAmount, setNewPaymentAmount] = useState<number>(0); 
+    const [advancePaymentDate, setAdvancePaymentDate] = useState<string>(new Date().toISOString().split('T')[0]);
+    const [advancePaymentMethod, setAdvancePaymentMethod] = useState<'Espèces' | 'Virement' | 'Chèque' | 'Carte Bancaire'>('Espèces');
+    const [advanceCheckNumber, setAdvanceCheckNumber] = useState<string>('');
+    const [advanceBankName, setAdvanceBankName] = useState<string>('');
     
     const [selectedProductId, setSelectedProductId] = useState('');
     const [selectedVariantId, setSelectedVariantId] = useState('');
@@ -109,6 +114,7 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
                 const resolvedClientId = invoiceToEdit.clientId || 'client-comptoir';
                 setClientId(resolvedClientId);
                 setDocumentId(invoiceToEdit.documentId || '');
+                setRecipientName(invoiceToEdit.recipientName || (invoiceToEdit.lineItems[0] as any)?.recipientName || '');
                 const cleanDate = normalizeDateForInput(invoiceToEdit.date);
                 setDate(cleanDate);
                 const rawDueDate = invoiceToEdit.dueDate || invoiceToEdit.lineItems[0]?.dueDate;
@@ -138,12 +144,19 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
                 
                 setExistingAmountPaid(invoiceToEdit.amountPaid || 0);
                 setNewPaymentAmount(0);
+                const rawPaymentDate = invoiceToEdit.paymentDate || (invoiceToEdit.lineItems[0] as any)?.paymentDate;
+                setAdvancePaymentDate(rawPaymentDate ? normalizeDateForInput(rawPaymentDate) : (cleanDate || new Date().toISOString().split('T')[0]));
+                const initialMethod = (invoiceToEdit.paymentMethod || invoiceToEdit.lineItems[0]?.paymentMethod || 'Espèces') as any;
+                setAdvancePaymentMethod(['Espèces', 'Virement', 'Chèque', 'Carte Bancaire'].includes(initialMethod) ? initialMethod : 'Espèces');
+                setAdvanceCheckNumber(invoiceToEdit.checkNumber || invoiceToEdit.lineItems[0]?.checkNumber || '');
+                setAdvanceBankName(invoiceToEdit.bankName || invoiceToEdit.lineItems[0]?.bankName || '');
                 setIsDiscountEnabled(!!invoiceToEdit.discountValue && invoiceToEdit.discountValue > 0);
                 setDiscountType(invoiceToEdit.discountType || 'percentage');
                 setDiscountValue(invoiceToEdit.discountValue ? formatDecimalForInput(invoiceToEdit.discountValue, language) : '');
             } else {
                 setClientId('');
                 setDocumentId(generateDocumentId ? generateDocumentId() : '');
+                setRecipientName('');
                 setDate(new Date().toISOString().split('T')[0]);
                 setDueDate('');
                 setSubject('');
@@ -159,6 +172,10 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
                 setLineItems([]);
                 setExistingAmountPaid(0);
                 setNewPaymentAmount(0);
+                setAdvancePaymentDate(new Date().toISOString().split('T')[0]);
+                setAdvancePaymentMethod('Espèces');
+                setAdvanceCheckNumber('');
+                setAdvanceBankName('');
                 setTempVat(companySettings?.defaultTva ?? (language === 'es' ? 21 : 20));
                 setIsDiscountEnabled(false);
                 setDiscountType('percentage');
@@ -175,6 +192,9 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
                     // If the PO was paid, we can pre-set the amount paid for the invoice too
                     if (prefilledOrder.amountPaid && prefilledOrder.amountPaid > 0) {
                         setNewPaymentAmount(prefilledOrder.amountPaid);
+                        if (prefilledOrder.date) {
+                            setAdvancePaymentDate(normalizeDateForInput(prefilledOrder.date));
+                        }
                     }
                 } else if (prefilledPO) {
                     setPurchaseOrderNumber(prefilledPO);
@@ -562,35 +582,39 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
             if (!proceed) return;
         }
 
+        const effectiveDate = date ? normalizeDateForInput(date) : (invoiceToEdit?.date ? normalizeDateForInput(invoiceToEdit.date) : new Date().toISOString().split('T')[0]);
+
         // Store metadata in the first line item to avoid schema changes
         const updatedLineItems = [...effectiveLineItems];
         if (updatedLineItems.length > 0) {
             updatedLineItems[0] = { 
                 ...updatedLineItems[0], 
                 calculationMode,
+                recipientName: recipientName.trim() || undefined,
                 subject: showSubjectField ? subject : undefined,
                 purchaseOrderNumber: showPOField ? purchaseOrderNumber : undefined,
                 dueDate: showDueDateField ? dueDate : undefined,
+                paymentDate: totalPaid > 0 ? (advancePaymentDate || effectiveDate) : undefined,
                 notes,
-                paymentMethod: showPaymentMethodField ? invoicePaymentMethod : undefined,
-                checkNumber: (showPaymentMethodField && invoicePaymentMethod === 'Chèque') ? checkNumber : undefined,
-                bankName: (showPaymentMethodField && invoicePaymentMethod === 'Chèque') ? bankName : undefined
+                paymentMethod: (newPaymentAmount > 0 || totalPaid > 0) ? advancePaymentMethod : (showPaymentMethodField ? invoicePaymentMethod : undefined),
+                checkNumber: (advancePaymentMethod === 'Chèque') ? advanceCheckNumber : (showPaymentMethodField && invoicePaymentMethod === 'Chèque' ? checkNumber : undefined),
+                bankName: (advancePaymentMethod === 'Chèque') ? advanceBankName : (showPaymentMethodField && invoicePaymentMethod === 'Chèque' ? bankName : undefined)
             };
         }
-
-        const effectiveDate = date ? normalizeDateForInput(date) : (invoiceToEdit?.date ? normalizeDateForInput(invoiceToEdit.date) : new Date().toISOString().split('T')[0]);
 
         const invoiceData = {
             documentId: documentId || undefined,
             clientId: savedClientId, 
             clientName: clientNameDisplay, 
+            recipientName: recipientName.trim() || undefined,
             date: effectiveDate, 
             dueDate: showDueDateField && dueDate ? normalizeDateForInput(dueDate) : undefined, 
+            paymentDate: totalPaid > 0 ? (advancePaymentDate || effectiveDate) : undefined,
             subject: showSubjectField ? subject : undefined, 
             purchaseOrderNumber: showPOField ? purchaseOrderNumber : undefined,
-            paymentMethod: showPaymentMethodField ? invoicePaymentMethod : undefined,
-            checkNumber: (showPaymentMethodField && invoicePaymentMethod === 'Chèque') ? checkNumber : undefined,
-            bankName: (showPaymentMethodField && invoicePaymentMethod === 'Chèque') ? bankName : undefined,
+            paymentMethod: (newPaymentAmount > 0 || totalPaid > 0) ? advancePaymentMethod : (showPaymentMethodField ? invoicePaymentMethod : undefined),
+            checkNumber: (advancePaymentMethod === 'Chèque') ? advanceCheckNumber : (showPaymentMethodField && invoicePaymentMethod === 'Chèque' ? checkNumber : undefined),
+            bankName: (advancePaymentMethod === 'Chèque') ? advanceBankName : (showPaymentMethodField && invoicePaymentMethod === 'Chèque' ? bankName : undefined),
             notes,
             lineItems: updatedLineItems, 
             status,
@@ -602,10 +626,10 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
             discountValue: isDiscountEnabled ? parseDecimalInput(discountValue) : undefined,
             initialPayment: newPaymentAmount > 0 ? { 
                 amount: newPaymentAmount, 
-                method: invoicePaymentMethod, 
-                date: new Date().toISOString().split('T')[0],
-                checkNumber: (invoicePaymentMethod === 'Chèque') ? checkNumber : undefined,
-                bankName: (invoicePaymentMethod === 'Chèque') ? bankName : undefined
+                method: advancePaymentMethod, 
+                date: advancePaymentDate || effectiveDate,
+                checkNumber: (advancePaymentMethod === 'Chèque') ? advanceCheckNumber : undefined,
+                bankName: (advancePaymentMethod === 'Chèque') ? advanceBankName : undefined
             } : undefined
         };
 
@@ -692,6 +716,16 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
                         <div className="space-y-1">
                             <label className="block text-sm font-bold text-slate-700 ml-1">{t('date')} *</label>
                             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="block w-full rounded-xl border-slate-200 bg-slate-50 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm h-12"/>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="block text-sm font-bold text-slate-700 ml-1">{t('recipientName')}</label>
+                            <input 
+                                type="text" 
+                                value={recipientName} 
+                                onChange={(e) => setRecipientName(e.target.value)} 
+                                placeholder={t('recipientPlaceholder')} 
+                                className="block w-full rounded-xl border-slate-200 bg-slate-50 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm h-12"
+                            />
                         </div>
                         {showDueDateField ? (
                             <div className="space-y-1">
@@ -1317,20 +1351,108 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 border-t border-slate-100 pt-6">
                         <div className="space-y-4">
-                            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                                {invoiceToEdit && existingAmountPaid > 0 && (
-                                    <div className="text-xs text-emerald-700 bg-emerald-50 p-2 rounded flex justify-between">
-                                        <span>{t('paid')} :</span>
-                                        <span className="font-bold">{existingAmountPaid.toLocaleString(language === 'ar' ? 'ar-MA' : 'fr-FR', { style: 'currency', currency: companySettings?.defaultCurrencyCode || 'MAD' })}</span>
+                            <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                                    <div className="flex items-center gap-2">
+                                        <Coins size={16} className="text-emerald-600" />
+                                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                                            {t('advanceSectionTitle') || (language === 'ar' ? 'التسبيق / الدفعة المستلمة' : 'Avance / Acompte')}
+                                        </h4>
                                     </div>
-                                )}
-                                <div className="space-y-1">
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase ml-1">{t('paymentAmount')}</label>
-                                    <div className="relative">
-                                        <input type="number" step="any" value={newPaymentAmount} onChange={(e) => setNewPaymentAmount(parseFloat(e.target.value) || 0)} className={`block w-full rounded-xl border-slate-200 bg-slate-50 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm font-bold h-11 ${isRTL ? 'pl-12 pr-3' : 'pl-3 pr-12'}`} placeholder="0.00"/>
-                                        <div className={`pointer-events-none absolute inset-y-0 flex items-center ${isRTL ? 'left-0 pl-3' : 'right-0 pr-3'}`}><span className="text-slate-400 font-bold text-xs">MAD</span></div>
+                                    {invoiceToEdit && existingAmountPaid > 0 && (
+                                        <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
+                                            {t('paid')} : {existingAmountPaid.toLocaleString(language === 'ar' ? 'ar-MA' : 'fr-FR', { style: 'currency', currency: companySettings?.defaultCurrencyCode || 'MAD' })}
+                                        </span>
+                                    )}
+                                </div>
+
+                                {/* Columns for Advance Amount & Advance Date */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                                    <div className="space-y-1">
+                                        <label className="block text-[10px] font-bold text-slate-500 uppercase ml-1">
+                                            {invoiceToEdit && existingAmountPaid > 0 
+                                                ? (language === 'ar' ? '+ تسبيق / دفعة إضافية' : '+ Nouvelle avance') 
+                                                : (t('advanceAmount') || (language === 'ar' ? 'مبلغ التسبيق (الدفعة)' : "Montant de l'avance"))}
+                                        </label>
+                                        <div className="relative">
+                                            <input 
+                                                type="number" 
+                                                step="any" 
+                                                value={newPaymentAmount || ''} 
+                                                onChange={(e) => setNewPaymentAmount(parseFloat(e.target.value) || 0)} 
+                                                className={`block w-full rounded-xl border-slate-200 bg-slate-50 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm font-bold h-11 ${isRTL ? 'pl-12 pr-3' : 'pl-3 pr-12'}`} 
+                                                placeholder="0.00"
+                                            />
+                                            <div className={`pointer-events-none absolute inset-y-0 flex items-center ${isRTL ? 'left-0 pl-3' : 'right-0 pr-3'}`}>
+                                                <span className="text-slate-400 font-bold text-xs">{companySettings?.defaultCurrencyCode || 'MAD'}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Date de l'avance (The requested column/field!) */}
+                                    <div className="space-y-1">
+                                        <label className="block text-[10px] font-bold text-slate-500 uppercase ml-1">
+                                            {t('advanceDate') || (language === 'ar' ? 'تاريخ التسبيق (الدفعة)' : "Date de l'avance")}
+                                        </label>
+                                        <input 
+                                            type="date" 
+                                            value={advancePaymentDate} 
+                                            onChange={(e) => setAdvancePaymentDate(e.target.value)} 
+                                            className="block w-full rounded-xl border-slate-200 bg-slate-50 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-xs sm:text-sm font-semibold h-11 px-3 text-slate-700"
+                                        />
                                     </div>
                                 </div>
+
+                                {/* Mode de règlement de l'avance */}
+                                {(newPaymentAmount > 0 || (invoiceToEdit && existingAmountPaid > 0)) && (
+                                    <div className="space-y-3 pt-2 border-t border-slate-100">
+                                        <div className="space-y-1">
+                                            <label className="block text-[10px] font-bold text-slate-500 uppercase ml-1">
+                                                {t('paymentMethod')}
+                                            </label>
+                                            <select 
+                                                value={advancePaymentMethod} 
+                                                onChange={(e) => setAdvancePaymentMethod(e.target.value as any)} 
+                                                className="block w-full rounded-xl border-slate-200 bg-slate-50 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-xs sm:text-sm font-semibold h-11 px-3 text-slate-700"
+                                            >
+                                                <option value="Espèces">{language === 'ar' ? 'نقداً (Espèces)' : 'Espèces'}</option>
+                                                <option value="Virement">{language === 'ar' ? 'تحويل بنكي (Virement)' : 'Virement'}</option>
+                                                <option value="Chèque">{language === 'ar' ? 'شيك (Chèque)' : 'Chèque'}</option>
+                                                <option value="Carte Bancaire">{language === 'ar' ? 'بطاقة بنكية (Carte)' : 'Carte Bancaire'}</option>
+                                            </select>
+                                        </div>
+
+                                        {advancePaymentMethod === 'Chèque' && (
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                                                <div className="space-y-1">
+                                                    <label className="block text-[10px] font-bold text-slate-500 uppercase ml-1">
+                                                        {language === 'ar' ? 'رقم الشيك' : 'N° de chèque'}
+                                                    </label>
+                                                    <input 
+                                                        type="text" 
+                                                        value={advanceCheckNumber} 
+                                                        onChange={(e) => setAdvanceCheckNumber(e.target.value)} 
+                                                        placeholder="Ex: CH-12345" 
+                                                        className="block w-full rounded-xl border-slate-200 bg-slate-50 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-xs h-10 px-3"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="block text-[10px] font-bold text-slate-500 uppercase ml-1">
+                                                        {language === 'ar' ? 'اسم البنك' : 'Nom de la banque'}
+                                                    </label>
+                                                    <input 
+                                                        type="text" 
+                                                        value={advanceBankName} 
+                                                        onChange={(e) => setAdvanceBankName(e.target.value)} 
+                                                        placeholder="Ex: Attijariwafa, BMCE..." 
+                                                        className="block w-full rounded-xl border-slate-200 bg-slate-50 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-xs h-10 px-3"
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
                                 <div className="mt-4 space-y-1">
                                     <label className="block text-[10px] font-bold text-slate-500 uppercase ml-1">{t('remarque')}</label>
                                     <textarea 

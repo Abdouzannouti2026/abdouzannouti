@@ -11,6 +11,7 @@ import { Quote, QuoteStatus, Client, Product, CompanySettings } from '../types';
 import { generatePDF, printDocument } from '../services/pdfService';
 import { useLanguage } from '../contexts/LanguageContext';
 import DocumentPreviewModal from './DocumentPreviewModal';
+import { compareDocumentsByDate } from '../utils/sorting';
 
 const getStatusBadge = (status: QuoteStatus) => {
     switch (status) {
@@ -55,7 +56,7 @@ const Quotes: React.FC<QuotesProps> = ({
     generateDocumentId
 }) => {
     const navigate = useNavigate();
-    const { t, isRTL } = useLanguage();
+    const { t, isRTL, language } = useLanguage();
     const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [quoteToUpdate, setQuoteToUpdate] = useState<Quote | null>(null);
@@ -72,16 +73,20 @@ const Quotes: React.FC<QuotesProps> = ({
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
-    // Pagination State
+    // Pagination & Sorting State
     const [currentPage, setCurrentPage] = useState(1);
+    const [dateSortOrder, setDateSortOrder] = useState<'desc' | 'asc'>('desc');
     const itemsPerPage = 10;
-    const filteredQuotes = quotes.filter(quote => {
-        const term = searchTerm.toLowerCase();
-        return (
-            (quote.documentId || quote.id).toLowerCase().includes(term) ||
-            (quote.clientName || '').toLowerCase().includes(term)
-        );
-    });
+    const filteredQuotes = quotes
+        .filter(quote => {
+            const term = searchTerm.toLowerCase();
+            return (
+                (quote.documentId || quote.id).toLowerCase().includes(term) ||
+                (quote.clientName || '').toLowerCase().includes(term) ||
+                (quote.recipientName || '').toLowerCase().includes(term)
+            );
+        })
+        .sort((a, b) => compareDocumentsByDate(a, b, dateSortOrder));
     const totalPages = Math.ceil(filteredQuotes.length / itemsPerPage);
     const startIndex = (currentPage - 1) * itemsPerPage;
     const paginatedQuotes = filteredQuotes.slice(startIndex, startIndex + itemsPerPage);
@@ -117,7 +122,7 @@ const Quotes: React.FC<QuotesProps> = ({
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [quotes.length, searchTerm, itemsPerPage]);
+    }, [quotes.length, searchTerm, itemsPerPage, dateSortOrder]);
 
     // Delete Modal State
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -331,17 +336,28 @@ const Quotes: React.FC<QuotesProps> = ({
 
             <div className="card-base overflow-hidden">
                 <div className="p-4 border-b border-slate-100 bg-white">
-                    <div className="relative">
-                        <div className={`pointer-events-none absolute inset-y-0 flex items-center ${isRTL ? 'right-0 pr-3.5' : 'left-0 pl-3.5'}`}>
-                            <Search className="h-4 w-4 text-slate-400" aria-hidden="true" />
+                    <div className="flex items-center gap-3">
+                        <div className="relative flex-1">
+                            <div className={`pointer-events-none absolute inset-y-0 flex items-center ${isRTL ? 'right-0 pr-3.5' : 'left-0 pl-3.5'}`}>
+                                <Search className="h-4 w-4 text-slate-400" aria-hidden="true" />
+                            </div>
+                            <input
+                                type="search"
+                                placeholder={t('search')}
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className={`block w-full rounded-xl border border-slate-200 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 ${isRTL ? 'pr-10 pl-4' : 'pl-10 pr-4'}`}
+                            />
                         </div>
-                        <input
-                            type="search"
-                            placeholder={t('search')}
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className={`block w-full rounded-xl border border-slate-200 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 ${isRTL ? 'pr-10 pl-4' : 'pl-10 pr-4'}`}
-                        />
+                        <button
+                            type="button"
+                            onClick={() => setDateSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 hover:border-slate-300 text-slate-700 transition-all select-none shrink-0"
+                            title={dateSortOrder === 'desc' ? (language === 'ar' ? 'الأحدث أولاً (اضغط للتغيير)' : 'Plus récent en premier (cliquer pour inverser)') : (language === 'ar' ? 'الأقدم أولاً (اضغط للتغيير)' : 'Plus ancien en premier (cliquer pour inverser)')}
+                        >
+                            <span className="text-emerald-600 font-bold text-sm leading-none">{dateSortOrder === 'desc' ? '↓' : '↑'}</span>
+                            <span className="hidden sm:inline">{dateSortOrder === 'desc' ? (language === 'ar' ? 'الأحدث أولاً' : 'Plus récent') : (language === 'ar' ? 'الأقدم أولاً' : 'Plus ancien')}</span>
+                        </button>
                     </div>
                 </div>
 
@@ -351,7 +367,17 @@ const Quotes: React.FC<QuotesProps> = ({
                         <thead className="bg-slate-50/70">
                             <tr>
                                 <th scope="col" className={`px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-slate-500 ${isRTL ? 'text-right' : 'text-left'}`}>#</th>
-                                <th scope="col" className={`px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-slate-500 ${isRTL ? 'text-right' : 'text-left'}`}>{t('date')}</th>
+                                <th 
+                                    scope="col" 
+                                    onClick={() => setDateSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+                                    className={`px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-slate-500 cursor-pointer hover:text-emerald-700 transition-colors select-none ${isRTL ? 'text-right' : 'text-left'}`}
+                                    title={dateSortOrder === 'desc' ? (language === 'ar' ? 'الترتيب: من الأحدث إلى الأقدم' : 'Tri : Plus récent en premier') : (language === 'ar' ? 'الترتيب: من الأقدم إلى الأحدث' : 'Tri : Plus ancien en premier')}
+                                >
+                                    <div className={`inline-flex items-center gap-1.5 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                                        <span>{t('date')}</span>
+                                        <span className="text-emerald-600 font-bold text-sm leading-none">{dateSortOrder === 'desc' ? '↓' : '↑'}</span>
+                                    </div>
+                                </th>
                                 <th scope="col" className={`px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-slate-500 ${isRTL ? 'text-right' : 'text-left'}`}>{t('client')}</th>
                                 <th scope="col" className={`px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-slate-500 ${isRTL ? 'text-right' : 'text-left'}`}>{t('amount')}</th>
                                 <th scope="col" className={`px-6 py-3.5 text-xs font-bold uppercase tracking-wider text-slate-500 ${isRTL ? 'text-right' : 'text-left'}`}>{t('status')}</th>

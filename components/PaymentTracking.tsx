@@ -32,6 +32,7 @@ const PaymentTracking: React.FC<PaymentTrackingProps> = ({ invoices, payments, o
 
     // Payment Modal State
     const [paymentAmount, setPaymentAmount] = useState<number>(0);
+    const [paymentDate, setPaymentDate] = useState<string>(new Date().toISOString().split('T')[0]);
     const [paymentMethod, setPaymentMethod] = useState<'Virement' | 'Chèque' | 'Espèces' | 'Carte Bancaire'>('Virement');
     const [checkNumber, setCheckNumber] = useState('');
     const [bankName, setBankName] = useState('');
@@ -180,6 +181,7 @@ const PaymentTracking: React.FC<PaymentTrackingProps> = ({ invoices, payments, o
         setSelectedInvoice(invoice);
         const remaining = invoice.amount - (invoice.amountPaid || 0);
         setPaymentAmount(remaining);
+        setPaymentDate(new Date().toISOString().split('T')[0]);
         setActiveMenuId(null);
     };
 
@@ -192,7 +194,7 @@ const PaymentTracking: React.FC<PaymentTrackingProps> = ({ invoices, payments, o
             invoiceNumber: selectedInvoice.documentId || selectedInvoice.id,
             clientId: selectedInvoice.clientId,
             clientName: selectedInvoice.clientName,
-            date: new Date().toISOString().split('T')[0],
+            date: paymentDate || new Date().toISOString().split('T')[0],
             amount: paymentAmount,
             method: paymentMethod,
             reference: paymentMethod === 'Chèque' ? checkNumber : undefined,
@@ -620,20 +622,33 @@ const PaymentTracking: React.FC<PaymentTrackingProps> = ({ invoices, payments, o
                         </div>
 
                         <form onSubmit={handlePaymentSubmit} className="space-y-4 sm:space-y-6">
-                            <div className="space-y-1.5 sm:space-y-2">
-                                <label className="block text-xs sm:text-sm font-black text-slate-700 ml-1">{t('amount')} ({currencyCode})</label>
-                                <div className="relative">
-                                    <input 
-                                        type="number" 
-                                        step="0.01" 
-                                        max={selectedInvoice.amount - (selectedInvoice.amountPaid || 0)}
-                                        value={paymentAmount} 
-                                        onChange={e => setPaymentAmount(parseFloat(e.target.value))}
-                                        className={`block w-full rounded-2xl border-slate-200 bg-slate-50 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 font-black text-xl sm:text-2xl h-14 sm:h-16 ${isRTL ? 'pl-16 pr-4' : 'pl-4 pr-16'}`}
-                                    />
-                                    <div className={`pointer-events-none absolute inset-y-0 flex items-center ${isRTL ? 'left-0 pl-4' : 'right-0 pr-4'}`}>
-                                        <span className="text-slate-300 font-black text-[10px] sm:text-xs">{currencyCode}</span>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                                <div className="space-y-1.5 sm:space-y-2">
+                                    <label className="block text-xs sm:text-sm font-black text-slate-700 ml-1">{t('amount')} ({currencyCode})</label>
+                                    <div className="relative">
+                                        <input 
+                                            type="number" 
+                                            step="0.01" 
+                                            max={selectedInvoice.amount - (selectedInvoice.amountPaid || 0)}
+                                            value={paymentAmount} 
+                                            onChange={e => setPaymentAmount(parseFloat(e.target.value))}
+                                            className={`block w-full rounded-2xl border-slate-200 bg-slate-50 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 font-black text-xl sm:text-2xl h-14 sm:h-16 ${isRTL ? 'pl-16 pr-4' : 'pl-4 pr-16'}`}
+                                        />
+                                        <div className={`pointer-events-none absolute inset-y-0 flex items-center ${isRTL ? 'left-0 pl-4' : 'right-0 pr-4'}`}>
+                                            <span className="text-slate-300 font-black text-[10px] sm:text-xs">{currencyCode}</span>
+                                        </div>
                                     </div>
+                                </div>
+                                <div className="space-y-1.5 sm:space-y-2">
+                                    <label className="block text-xs sm:text-sm font-black text-slate-700 ml-1">
+                                        {language === 'ar' ? 'تاريخ الدفعة / التسبيق' : (language === 'es' ? 'Fecha de pago' : 'Date de paiement')}
+                                    </label>
+                                    <input 
+                                        type="date" 
+                                        value={paymentDate} 
+                                        onChange={e => setPaymentDate(e.target.value)}
+                                        className="block w-full rounded-2xl border-slate-200 bg-slate-50 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 font-bold text-xs sm:text-sm h-14 sm:h-16 px-4 text-slate-700"
+                                    />
                                 </div>
                             </div>
                             <div className="space-y-1.5 sm:space-y-2">
