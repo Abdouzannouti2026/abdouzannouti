@@ -83,12 +83,22 @@ const Invoices: React.FC<InvoicesProps> = ({ invoices, onUpdateInvoiceStatus, on
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
-    // Pagination & Sorting State
+    // Pagination, Filter & Sorting State
     const [currentPage, setCurrentPage] = useState(1);
     const [dateSortOrder, setDateSortOrder] = useState<'desc' | 'asc'>('desc');
+    const [docTypeFilter, setDocTypeFilter] = useState<'all' | 'Facture' | 'Bon'>('all');
     const itemsPerPage = 10;
+
+    const facturesCount = useMemo(() => invoices.filter(inv => inv.documentType === 'Facture').length, [invoices]);
+    const bonsCount = useMemo(() => invoices.filter(inv => inv.documentType !== 'Facture').length, [invoices]);
+
     const filteredInvoices = invoices
         .filter(invoice => {
+            const isFacture = invoice.documentType === 'Facture';
+            const isBon = !isFacture;
+            if (docTypeFilter === 'Facture' && !isFacture) return false;
+            if (docTypeFilter === 'Bon' && !isBon) return false;
+
             const term = searchTerm.toLowerCase();
             return (
                 (invoice.documentId || invoice.id).toLowerCase().includes(term) ||
@@ -130,10 +140,10 @@ const Invoices: React.FC<InvoicesProps> = ({ invoices, onUpdateInvoiceStatus, on
         return pages;
     };
 
-    // Reset page if search results or data change
+    // Reset page if search results, filter, or data change
     useEffect(() => {
         setCurrentPage(1);
-    }, [invoices.length, searchTerm, itemsPerPage]);
+    }, [invoices.length, searchTerm, docTypeFilter, itemsPerPage]);
 
     // Delete Modal State
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -142,6 +152,7 @@ const Invoices: React.FC<InvoicesProps> = ({ invoices, onUpdateInvoiceStatus, on
     const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
     const [selectedDocForPreview, setSelectedDocForPreview] = useState<any>(null);
     const [selectedRecipientForPreview, setSelectedRecipientForPreview] = useState<any>(null);
+    const [selectedDocTypeForPreview, setSelectedDocTypeForPreview] = useState<'Facture' | 'Bon'>('Facture');
 
     // Menu Dropdown State
     const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
@@ -284,7 +295,8 @@ const Invoices: React.FC<InvoicesProps> = ({ invoices, onUpdateInvoiceStatus, on
         setDownloadingId(invoice.id);
         try {
             const client = getInvoiceRecipient(invoice);
-            await generatePDF('Facture', invoice, companySettings || null, client);
+            const isFacture = invoice.documentType === 'Facture';
+            await generatePDF(isFacture ? 'Facture' : 'Bon', invoice, companySettings || null, client);
         } catch (error: any) {
             alert(error.message);
         } finally {
@@ -295,7 +307,8 @@ const Invoices: React.FC<InvoicesProps> = ({ invoices, onUpdateInvoiceStatus, on
     const handlePrint = (invoice: Invoice) => {
         try {
             const client = getInvoiceRecipient(invoice);
-            printDocument('Facture', invoice, companySettings || null, client);
+            const isFacture = invoice.documentType === 'Facture';
+            printDocument(isFacture ? 'Facture' : 'Bon', invoice, companySettings || null, client);
         } catch (error: any) {
             alert(error.message);
         }
@@ -314,7 +327,7 @@ const Invoices: React.FC<InvoicesProps> = ({ invoices, onUpdateInvoiceStatus, on
 
     return (
         <div>
-            <Header title={t('invoices')}>
+            <Header title={language === 'ar' ? 'الفواتير والوصولات (Factures & Bons)' : (language === 'es' ? 'Facturas y Bons' : 'Factures & Bons')}>
                 <div className={`flex items-center gap-2.5 ${isRTL ? 'flex-row-reverse' : ''}`}>
                     <button
                         type="button"
@@ -331,7 +344,7 @@ const Invoices: React.FC<InvoicesProps> = ({ invoices, onUpdateInvoiceStatus, on
                         className="btn-primary px-3.5 py-2.5"
                     >
                         <Plus className="h-4 w-4" />
-                        <span className="hidden sm:inline">{t('newInvoice')}</span>
+                        <span className="hidden sm:inline">{language === 'ar' ? 'إنشاء فاتورة / وصل' : 'Nouvelle Facture / Bon'}</span>
                         <span className="sm:hidden">{t('add')}</span>
                     </button>
                 </div>
@@ -364,7 +377,7 @@ const Invoices: React.FC<InvoicesProps> = ({ invoices, onUpdateInvoiceStatus, on
                         setSelectedDocForPreview(null);
                         setSelectedRecipientForPreview(null);
                     }}
-                    type="Facture"
+                    type={selectedDocTypeForPreview}
                     doc={selectedDocForPreview}
                     settings={companySettings}
                     recipient={selectedRecipientForPreview}
@@ -466,7 +479,46 @@ const Invoices: React.FC<InvoicesProps> = ({ invoices, onUpdateInvoiceStatus, on
             )}
 
             <div className="card-base overflow-hidden">
-                <div className="p-4 border-b border-slate-100 bg-white">
+                <div className="p-4 border-b border-slate-100 bg-white space-y-3">
+                    {/* Document Type Filter Tabs */}
+                    <div className="flex items-center gap-1.5 p-1 bg-slate-100/90 rounded-2xl border border-slate-200/80 w-full sm:w-auto self-start overflow-x-auto">
+                        <button
+                            type="button"
+                            onClick={() => setDocTypeFilter('all')}
+                            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                                docTypeFilter === 'all'
+                                    ? 'bg-white text-slate-900 shadow-xs border border-slate-200'
+                                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                            }`}
+                        >
+                            {language === 'ar' ? `الكل (${invoices.length})` : `Tous (${invoices.length})`}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setDocTypeFilter('Facture')}
+                            className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                                docTypeFilter === 'Facture'
+                                    ? 'bg-blue-600 text-white shadow-xs'
+                                    : 'text-slate-600 hover:text-blue-700 hover:bg-blue-50'
+                            }`}
+                        >
+                            <span>📄</span>
+                            <span>{language === 'ar' ? `الفواتير (${facturesCount})` : `Factures (${facturesCount})`}</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setDocTypeFilter('Bon')}
+                            className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                                docTypeFilter === 'Bon'
+                                    ? 'bg-emerald-600 text-white shadow-xs'
+                                    : 'text-slate-600 hover:text-emerald-700 hover:bg-emerald-50'
+                            }`}
+                        >
+                            <span>🧾</span>
+                            <span>{language === 'ar' ? `الوصولات (${bonsCount})` : `Bons (${bonsCount})`}</span>
+                        </button>
+                    </div>
+
                     <div className="flex items-center gap-3">
                         <div className="relative flex-1">
                             <div className={`pointer-events-none absolute inset-y-0 flex items-center ${isRTL ? 'right-0 pr-3.5' : 'left-0 pl-3.5'}`}>
@@ -522,9 +574,24 @@ const Invoices: React.FC<InvoicesProps> = ({ invoices, onUpdateInvoiceStatus, on
                             {paginatedInvoices.length > 0 ? (
                                 paginatedInvoices.map((invoice) => {
                                     const remaining = invoice.amount - (invoice.amountPaid || 0);
+                                    const isFacture = invoice.documentType === 'Facture';
+                                    const isBon = !isFacture;
                                     return (
                                     <tr key={invoice.id} className="hover:bg-slate-50/80 transition-colors duration-150">
-                                        <td className={`whitespace-nowrap px-6 py-4 text-sm font-bold text-emerald-600 ${isRTL ? 'text-right' : 'text-left'}`}>{invoice.documentId || invoice.id}</td>
+                                        <td className={`whitespace-nowrap px-6 py-4 text-sm font-bold ${isRTL ? 'text-right' : 'text-left'}`}>
+                                            <div className="flex items-center gap-2">
+                                                <span className={isBon ? 'text-emerald-600 font-mono' : 'text-blue-600 font-mono'}>
+                                                    {invoice.documentId || invoice.id}
+                                                </span>
+                                                <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-wide border ${
+                                                    isBon 
+                                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                                                        : 'bg-blue-50 text-blue-700 border-blue-200'
+                                                }`}>
+                                                    {isBon ? '🧾 Bon' : '📄 Facture'}
+                                                </span>
+                                            </div>
+                                        </td>
                                         <td className={`whitespace-nowrap px-6 py-4 text-sm font-medium text-slate-500 ${isRTL ? 'text-right' : 'text-left'}`}>{new Date(invoice.date).toLocaleDateString(language === 'ar' ? 'ar-MA' : 'fr-FR')}</td>
                                         <td className={`whitespace-nowrap px-6 py-4 text-sm font-bold text-slate-900 max-w-[180px] truncate ${isRTL ? 'text-right' : 'text-left'}`}>
                                             <div>{invoice.clientName}</div>
@@ -589,12 +656,23 @@ const Invoices: React.FC<InvoicesProps> = ({ invoices, onUpdateInvoiceStatus, on
                     {paginatedInvoices.length > 0 ? (
                         paginatedInvoices.map((invoice) => {
                             const remaining = invoice.amount - (invoice.amountPaid || 0);
+                            const isFacture = invoice.documentType === 'Facture';
+                            const isBon = !isFacture;
                             return (
                                 <div key={invoice.id} className="p-4 bg-white mb-2.5 rounded-2xl shadow-xs border border-slate-100 transition-all active:bg-slate-50">
                                     <div className="flex justify-between items-start mb-3">
                                         <div className="min-w-0 flex-1">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <p className="text-xs font-bold text-emerald-600">{invoice.documentId || invoice.id}</p>
+                                            <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                                <p className={`text-xs font-bold font-mono ${isBon ? 'text-emerald-600' : 'text-blue-600'}`}>
+                                                    {invoice.documentId || invoice.id}
+                                                </p>
+                                                <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-extrabold uppercase border ${
+                                                    isBon 
+                                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                                                        : 'bg-blue-50 text-blue-700 border-blue-200'
+                                                }`}>
+                                                    {isBon ? '🧾 Bon' : '📄 Facture'}
+                                                </span>
                                                 <span className={getStatusBadge(invoice.status)}>
                                                     {invoice.status}
                                                 </span>
@@ -769,8 +847,10 @@ const Invoices: React.FC<InvoicesProps> = ({ invoices, onUpdateInvoiceStatus, on
                         <button 
                             onClick={async () => {
                                 const client = getInvoiceRecipient(activeInvoice);
+                                const isFacture = activeInvoice.documentType === 'Facture';
                                 setSelectedDocForPreview(activeInvoice);
                                 setSelectedRecipientForPreview(client);
+                                setSelectedDocTypeForPreview(isFacture ? 'Facture' : 'Bon');
                                 setIsPreviewModalOpen(true);
                                 setActiveMenuId(null);
                             }}

@@ -907,7 +907,7 @@ const MainContent: React.FC = () => {
         if (!quote) return;
         try {
             const documentId = generateDocumentId('invoice', invoices);
-            const newInvoiceData: Invoice = { id: generateUUID(), documentId: documentId, quoteId: quote.id, clientId: quote.clientId, clientName: quote.clientName, recipientName: quote.recipientName || (quote.lineItems[0] as any)?.recipientName, date: new Date().toISOString().split('T')[0], dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], status: InvoiceStatus.Pending, subject: quote.subject, reference: quote.reference, purchaseOrderNumber: quote.purchaseOrderNumber, lineItems: quote.lineItems, subTotal: quote.subTotal, vatAmount: quote.vatAmount, amount: quote.amount, amountPaid: 0 };
+            const newInvoiceData: Invoice = { id: generateUUID(), documentType: 'Bon', documentId: documentId, quoteId: quote.id, clientId: quote.clientId, clientName: quote.clientName, recipientName: quote.recipientName || (quote.lineItems[0] as any)?.recipientName, date: new Date().toISOString().split('T')[0], dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], status: InvoiceStatus.Pending, subject: quote.subject, reference: quote.reference, purchaseOrderNumber: quote.purchaseOrderNumber, lineItems: quote.lineItems, subTotal: quote.subTotal, vatAmount: quote.vatAmount, amount: quote.amount, amountPaid: 0 };
             
             // Deduct stock if not draft
             if (newInvoiceData.status !== InvoiceStatus.Draft) {
@@ -1283,6 +1283,7 @@ const MainContent: React.FC = () => {
             const documentId = generateDocumentId('invoice', invoices);
             const newInvoiceData: Invoice = { 
                 id: generateUUID(), 
+                documentType: 'Bon',
                 documentId: documentId, 
                 clientId: note.clientId, 
                 clientName: note.clientName, 

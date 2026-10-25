@@ -117,6 +117,7 @@ export interface LineItem {
   paymentDate?: string;
   recipientName?: string;
   reference?: string;
+  documentType?: 'Facture' | 'Bon';
   discountType?: 'percentage' | 'fixed';
   discountValue?: number;
 }
@@ -175,6 +176,7 @@ export interface PurchaseOrder {
 export interface Invoice {
     id: string;
     documentId?: string; // Human readable ID (FA00001)
+    documentType?: 'Facture' | 'Bon'; // Choix du type : Facture ou Bon
     quoteId?: string;
     clientId: string;
     clientName: string;

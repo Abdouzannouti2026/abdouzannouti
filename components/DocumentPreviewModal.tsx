@@ -33,8 +33,13 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
     const [htmlContent, setHtmlContent] = useState<string>('');
     const [preGeneratedBlob, setPreGeneratedBlob] = useState<Blob | null>(null);
     const [scale, setScale] = useState(1);
+    const [currentType, setCurrentType] = useState<DocumentType>(type);
     const previewContainerRef = useRef<HTMLDivElement>(null);
     const wrapperRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        setCurrentType(type);
+    }, [type]);
 
     useEffect(() => {
         const updateScale = () => {
@@ -69,11 +74,16 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
         ice: (doc as any)?.clientIce || ''
     } as Client;
 
+    const effectiveDoc = {
+        ...doc,
+        documentType: (currentType === 'Facture' || currentType === 'Bon') ? currentType : (doc as any).documentType
+    };
+
     useEffect(() => {
         if (isOpen) {
             setTimeout(() => setIsVisible(true), 10);
             try {
-                const html = generateDocumentHTML(type, doc, settings, effectiveRecipient);
+                const html = generateDocumentHTML(currentType, effectiveDoc, settings, effectiveRecipient);
                 setHtmlContent(html);
                 
                 // Pre-generate blob for faster sharing/downloading
@@ -81,7 +91,7 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
                     setIsGeneratingBackground(true);
                     setTimeout(async () => {
                         try {
-                            const blob = await generatePDFBlob(type, doc, settings, effectiveRecipient);
+                            const blob = await generatePDFBlob(currentType, effectiveDoc, settings, effectiveRecipient);
                             setPreGeneratedBlob(blob);
                         } catch (err) {
                             console.error("Background PDF generation failed:", err);
@@ -98,7 +108,7 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
             setPreGeneratedBlob(null);
             setIsGeneratingBackground(false);
         }
-    }, [isOpen, type, doc, settings, recipient]);
+    }, [isOpen, currentType, doc, settings, recipient]);
 
     const handleClose = () => {
         setIsVisible(false);
@@ -113,13 +123,13 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
                 const url = URL.createObjectURL(preGeneratedBlob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `${type.toLowerCase().replace(/\s+/g, '_')}_${doc.documentId || doc.id}.pdf`;
+                a.download = `${currentType.toLowerCase().replace(/\s+/g, '_')}_${doc.documentId || doc.id}.pdf`;
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
             } else {
-                await generatePDF(type, doc, settings, effectiveRecipient);
+                await generatePDF(currentType, effectiveDoc, settings, effectiveRecipient);
             }
         } finally {
             setIsActionLoading(false);
@@ -130,7 +140,7 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
         if (isActionLoading) return;
         setIsActionLoading(true);
         try {
-            await printDocument(type, doc, settings, effectiveRecipient);
+            await printDocument(currentType, effectiveDoc, settings, effectiveRecipient);
         } finally {
             setIsActionLoading(false);
         }
@@ -146,17 +156,47 @@ const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
             <div className={`relative w-full max-w-5xl h-[90vh] flex flex-col bg-slate-100 rounded-2xl shadow-2xl border border-slate-100 overflow-hidden transition-all duration-300 ease-out transform ${isVisible ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}`}>
                 
                 {/* Header */}
-                <div className={`flex items-center justify-between p-5 bg-white border-b border-slate-100 gap-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+                <div className={`flex items-center justify-between p-4 sm:p-5 bg-white border-b border-slate-100 gap-3 flex-wrap sm:flex-nowrap ${isRTL ? 'flex-row-reverse' : ''}`}>
                     <div className={`flex flex-col truncate ${isRTL ? 'text-right' : ''}`}>
                         <h3 className="text-base font-bold text-slate-900 leading-tight truncate">
-                            {type === 'Facture' ? (language === 'ar' ? 'وصل' : 'Bon') : type} #{doc.documentId || doc.id}
+                            {currentType === 'Facture' 
+                                ? (language === 'ar' ? 'فاتورة' : 'Facture') 
+                                : (currentType === 'Bon' ? (language === 'ar' ? 'وصل بيع' : 'Bon') : currentType)} #{doc.documentId || doc.id}
                         </h3>
                         <p className="text-xs text-slate-500 font-medium truncate">
                             {effectiveRecipient.name}
                         </p>
                     </div>
                     
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                        {/* Interactive toggle for Facture vs Bon */}
+                        {(type === 'Facture' || type === 'Bon') && (
+                            <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200">
+                                <button
+                                    type="button"
+                                    onClick={() => setCurrentType('Facture')}
+                                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                        currentType === 'Facture'
+                                            ? 'bg-blue-600 text-white shadow-xs'
+                                            : 'text-slate-600 hover:text-slate-900'
+                                    }`}
+                                >
+                                    📄 {language === 'ar' ? 'فاتورة' : 'Facture'}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setCurrentType('Bon')}
+                                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                        currentType === 'Bon'
+                                            ? 'bg-emerald-600 text-white shadow-xs'
+                                            : 'text-slate-600 hover:text-slate-900'
+                                    }`}
+                                >
+                                    🧾 {language === 'ar' ? 'وصل' : 'Bon'}
+                                </button>
+                            </div>
+                        )}
+
                         <button 
                             onClick={handleDownload}
                             disabled={isActionLoading}

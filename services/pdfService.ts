@@ -51,6 +51,7 @@ export interface PDFOptions {
 
 export type DocumentType =
   | "Facture"
+  | "Bon"
   | "Devis"
   | "Bon de Livraison"
   | "Bon de Commande"
@@ -433,7 +434,21 @@ export const generateDocumentHTML = (
     labels.amountInWordsPrefix ||
     dict.pdfAmountPrefix ||
     "Arrêté le présent document à la somme de :";
-  if (docType === "Facture") {
+  const isInvoiceOrBon = docType === "Facture" || docType === "Bon";
+  const explicitType = (doc as any).documentType;
+  // All existing documents in the account default to BON; only explicitly chosen Factures become Facture
+  const isFacture = isInvoiceOrBon && explicitType === "Facture";
+  const isBon = isInvoiceOrBon && !isFacture;
+
+  if (isFacture) {
+    txtAmountInWords = txtAmountInWords.replace(
+      "le présent document",
+      "la présente facture",
+    ).replace(
+      "le présent bon",
+      "la présente facture",
+    );
+  } else if (isBon) {
     txtAmountInWords = txtAmountInWords.replace(
       "le présent document",
       "le présent bon",
@@ -481,20 +496,27 @@ export const generateDocumentHTML = (
   const displayId = doc.documentId || doc.id;
   const isDeliveryNote = docType === "Bon de Livraison";
 
-  // Document Titles translation
-  let titleDisplay = docType === "Facture" ? "BON" : docType.toUpperCase();
-  if (lang === "es") {
-    if (docType === "Facture") titleDisplay = "BON";
-    else if (docType === "Devis") titleDisplay = "PRESUPUESTO";
+  // Document Titles translation: Facture vs Bon vs Devis vs BL vs BC vs Avoir
+  let titleDisplay = docType.toUpperCase();
+  if (isFacture) {
+    titleDisplay = lang === "ar" ? "فاتورة" : (lang === "es" ? "FACTURA" : (lang === "en" ? "INVOICE" : "FACTURE"));
+  } else if (isBon) {
+    titleDisplay = lang === "ar" ? "وصل بيع" : (lang === "es" ? "BON" : (lang === "en" ? "BON" : "BON"));
+  } else if (lang === "es") {
+    if (docType === "Devis") titleDisplay = "PRESUPUESTO";
     else if (docType === "Bon de Livraison") titleDisplay = "ALBARÁN";
     else if (docType === "Bon de Commande") titleDisplay = "PEDIDO";
     else if (docType === "Avoir") titleDisplay = "NOTA DE CRÉDITO";
   } else if (lang === "en") {
-    if (docType === "Facture") titleDisplay = "BON";
-    else if (docType === "Devis") titleDisplay = "QUOTE";
+    if (docType === "Devis") titleDisplay = "QUOTE";
     else if (docType === "Bon de Livraison") titleDisplay = "DELIVERY NOTE";
     else if (docType === "Bon de Commande") titleDisplay = "PURCHASE ORDER";
     else if (docType === "Avoir") titleDisplay = "CREDIT NOTE";
+  } else if (lang === "ar") {
+    if (docType === "Devis") titleDisplay = "عرض أسعار";
+    else if (docType === "Bon de Livraison") titleDisplay = "وصل تسليم";
+    else if (docType === "Bon de Commande") titleDisplay = "طلب شراء";
+    else if (docType === "Avoir") titleDisplay = "فاتورة إرجاع";
   } else if (docType === "Avoir") {
     titleDisplay = "FACTURE D’AVOIR";
   }

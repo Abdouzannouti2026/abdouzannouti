@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Plus, Trash2, ScanLine, Calculator, FileText, CreditCard, Loader2, Package, Square, Ruler, Weight, Hash, Tag, Coins, Layers, AlertTriangle } from 'lucide-react';
+import { X, Plus, Trash2, ScanLine, Calculator, FileText, Receipt, CreditCard, Loader2, Package, Square, Ruler, Weight, Hash, Tag, Coins, Layers, AlertTriangle } from 'lucide-react';
 import { Client, Product, Invoice, LineItem, InvoiceStatus, CompanySettings } from '../types';
 import { useLanguage } from '../contexts/LanguageContext';
 import { parseDecimalInput, formatDecimalForInput, roundPrice } from '../services/currencyService';
@@ -29,6 +29,7 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
     const qtyColLabel = companySettings?.documentColumns?.find(c => c.id === 'quantity')?.label || t('quantity');
     const vatOptions = language === 'es' ? [21, 10, 4, 0] : [20, 14, 10, 7, 0];
 
+    const [documentType, setDocumentType] = useState<'Facture' | 'Bon'>('Bon');
     const [clientId, setClientId] = useState('');
     const [documentId, setDocumentId] = useState('');
     const [recipientName, setRecipientName] = useState('');
@@ -110,6 +111,8 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
             setSaveError(null);
             setStockError(null);
             if (invoiceToEdit) {
+                const initialDocType = invoiceToEdit.documentType === 'Facture' ? 'Facture' : 'Bon';
+                setDocumentType(initialDocType);
                 // POS invoices for counter clients have clientId === '' or 'client-comptoir'
                 const resolvedClientId = invoiceToEdit.clientId || 'client-comptoir';
                 setClientId(resolvedClientId);
@@ -154,8 +157,10 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
                 setDiscountType(invoiceToEdit.discountType || 'percentage');
                 setDiscountValue(invoiceToEdit.discountValue ? formatDecimalForInput(invoiceToEdit.discountValue, language) : '');
             } else {
+                setDocumentType('Bon');
                 setClientId('');
-                setDocumentId(generateDocumentId ? generateDocumentId() : '');
+                const generatedId = generateDocumentId ? generateDocumentId() : '';
+                setDocumentId(generatedId ? generatedId.replace(/^FAC([-/])/, 'BON$1') : '');
                 setRecipientName('');
                 setDate(new Date().toISOString().split('T')[0]);
                 setDueDate('');
@@ -589,6 +594,7 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
         if (updatedLineItems.length > 0) {
             updatedLineItems[0] = { 
                 ...updatedLineItems[0], 
+                documentType,
                 calculationMode,
                 recipientName: recipientName.trim() || undefined,
                 subject: showSubjectField ? subject : undefined,
@@ -603,6 +609,7 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
         }
 
         const invoiceData = {
+            documentType,
             documentId: documentId || undefined,
             clientId: savedClientId, 
             clientName: clientNameDisplay, 
@@ -665,11 +672,21 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
                             <FileText size={18} />
                         </div>
                         <div>
-                            <h3 className="text-base font-bold text-slate-900">{invoiceToEdit ? t('editInvoice') : t('newInvoice')}</h3>
+                            <h3 className="text-base font-bold text-slate-900">
+                                {invoiceToEdit 
+                                    ? (documentType === 'Facture' 
+                                        ? (language === 'ar' ? 'تعديل الفاتورة' : 'Modifier la Facture') 
+                                        : (language === 'ar' ? 'تعديل الوصل' : 'Modifier le Bon'))
+                                    : (documentType === 'Facture' 
+                                        ? (language === 'ar' ? 'إنشاء فاتورة جديدة' : 'Nouvelle Facture') 
+                                        : (language === 'ar' ? 'إنشاء وصل جديد' : 'Nouveau Bon'))}
+                            </h3>
                             <p className="text-xs text-slate-500">
                                 {invoiceToEdit 
                                     ? `#${invoiceToEdit.documentId || invoiceToEdit.id}` 
-                                    : (language === 'fr' ? 'Éditer et enregistrer un nouveau bon client' : (language === 'ar' ? 'تحرير وحفظ وصل جديد' : 'Create and save a new voucher/bon'))}
+                                    : (documentType === 'Facture'
+                                        ? (language === 'fr' ? 'Éditer et enregistrer une facture officielle' : (language === 'ar' ? 'تحرير وحفظ فاتورة رسمية للزبون' : 'Create and save an official invoice'))
+                                        : (language === 'fr' ? 'Éditer et enregistrer un bon de vente client' : (language === 'ar' ? 'تحرير وحفظ وصل بيع / تسليم' : 'Create and save a sales voucher / bon')))}
                             </p>
                         </div>
                     </div>
@@ -678,16 +695,91 @@ const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({ isOpen, onClose
                     </button>
                 </div>
 
-                <div className="px-3 md:px-6 py-5 overflow-y-auto custom-scrollbar flex-1 space-y-6 pb-24 md:pb-8">
+                <div className="px-3 md:px-6 py-5 overflow-y-auto custom-scrollbar flex-1 space-y-5 pb-24 md:pb-8">
+                    {/* VISIBLE DOCUMENT TYPE SELECTOR: FACTURE vs BON */}
+                    <div className="bg-gradient-to-r from-slate-50 to-slate-100/70 p-3.5 rounded-2xl border border-slate-200/90 shadow-xs">
+                        <div className="flex items-center justify-between mb-2.5">
+                            <label className="text-xs font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                                <Tag size={14} className={documentType === 'Facture' ? 'text-blue-600' : 'text-emerald-600'} />
+                                <span>{language === 'ar' ? 'نوع الوثيقة (اختر فاتورة أو وصل) :' : 'Type de document (Sélectionnez Facture ou Bon) :'}</span>
+                            </label>
+                            <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border transition-all ${
+                                documentType === 'Facture' 
+                                    ? 'bg-blue-50 text-blue-700 border-blue-200' 
+                                    : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            }`}>
+                                {documentType === 'Facture' 
+                                    ? (language === 'ar' ? '📄 نوع الوثيقة: فاتورة' : '📄 Type : Facture') 
+                                    : (language === 'ar' ? '🧾 نوع الوثيقة: وصل' : '🧾 Type : Bon')}
+                            </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2.5 sm:gap-4">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setDocumentType('Facture');
+                                    setDocumentId(prev => {
+                                        if (!prev) return prev;
+                                        if (prev.startsWith('BON-')) return prev.replace(/^BON-/, 'FAC-');
+                                        if (prev.startsWith('BON/')) return prev.replace(/^BON\//, 'FAC/');
+                                        return prev;
+                                    });
+                                }}
+                                className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl font-bold text-sm transition-all duration-150 cursor-pointer ${
+                                    documentType === 'Facture'
+                                        ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25 ring-2 ring-blue-500/40 border border-blue-600'
+                                        : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200 hover:text-slate-900'
+                                }`}
+                            >
+                                <FileText size={18} className={documentType === 'Facture' ? 'text-white' : 'text-blue-600'} />
+                                <div className="text-left">
+                                    <div className="leading-tight">{language === 'ar' ? '📄 فاتورة (Facture)' : '📄 Facture'}</div>
+                                    <div className={`text-[10px] font-normal hidden sm:block ${documentType === 'Facture' ? 'text-blue-100' : 'text-slate-400'}`}>
+                                        {language === 'ar' ? 'فاتورة رسمية' : 'Document officiel'}
+                                    </div>
+                                </div>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setDocumentType('Bon');
+                                    setDocumentId(prev => {
+                                        if (!prev) return prev;
+                                        if (prev.startsWith('FAC-')) return prev.replace(/^FAC-/, 'BON-');
+                                        if (prev.startsWith('FAC/')) return prev.replace(/^FAC\//, 'BON/');
+                                        return prev;
+                                    });
+                                }}
+                                className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl font-bold text-sm transition-all duration-150 cursor-pointer ${
+                                    documentType === 'Bon'
+                                        ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/25 ring-2 ring-emerald-500/40 border border-emerald-600'
+                                        : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200 hover:text-slate-900'
+                                }`}
+                            >
+                                <Receipt size={18} className={documentType === 'Bon' ? 'text-white' : 'text-emerald-600'} />
+                                <div className="text-left">
+                                    <div className="leading-tight">{language === 'ar' ? '🧾 وصل (Bon)' : '🧾 Bon'}</div>
+                                    <div className={`text-[10px] font-normal hidden sm:block ${documentType === 'Bon' ? 'text-emerald-100' : 'text-slate-400'}`}>
+                                        {language === 'ar' ? 'وصل بيع / كونتوار' : 'Bon de vente / comptoir'}
+                                    </div>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-1">
-                            <label className="block text-sm font-bold text-slate-700 ml-1">{language === 'es' ? 'Nº de Bon' : (language === 'ar' ? 'رقم الوصل (N° Bon)' : 'N° Bon')} *</label>
+                            <label className="block text-sm font-bold text-slate-700 ml-1">
+                                {documentType === 'Facture'
+                                    ? (language === 'es' ? 'Nº de Factura' : (language === 'ar' ? 'رقم الفاتورة (N° Facture)' : 'N° Facture'))
+                                    : (language === 'es' ? 'Nº de Bon' : (language === 'ar' ? 'رقم الوصل (N° Bon)' : 'N° Bon'))} *
+                            </label>
                             <input 
                                 type="text" 
                                 value={documentId} 
                                 onChange={(e) => setDocumentId(e.target.value)} 
                                 required
-                                placeholder="FAC-YYYY/XXXXX"
+                                placeholder={documentType === 'Facture' ? "FAC-YYYY/XXXXX" : "BON-YYYY/XXXXX"}
                                 className="block w-full rounded-xl border-slate-200 bg-slate-50 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm h-12 font-mono"
                             />
                         </div>

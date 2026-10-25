@@ -725,6 +725,7 @@ export const POS: React.FC<POSProps> = ({
       if (documentTypeToGenerate === 'invoice') {
         // ================= OPTION 1: GENERATE OFFICIAL INVOICE =================
         const invoicePayload = {
+          documentType: 'Bon' as const,
           clientId: selectedClient.id === 'client-comptoir' ? '' : selectedClient.id,
           clientName: selectedClient.name,
           date: todayStr,
