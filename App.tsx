@@ -8,10 +8,9 @@ import { supabase } from './supabaseClient';
 import { Session } from '@supabase/supabase-js';
 import { AnimatePresence, motion } from 'framer-motion';
 import { LanguageProvider } from './contexts/LanguageContext';
-import { generateUUID } from './src/utils/uuid';
-import { sortDocumentsByDate } from './utils/sorting';
-
-import Sidebar from './components/Sidebar';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import Login from './components/Login';
+import { generateUUID } ...
 import Dashboard from './components/Dashboard';
 import POS from './components/POS';
 import InvoicesComponent from './components/Invoices';
@@ -1683,12 +1682,38 @@ const App: React.FC = () => {
                                     <Navigate to="/" replace />
                                 )
                             } 
-                        />
-                    </Routes>
-                </AnimatePresence>
-            </HashRouter>
-        </LanguageProvider>
-    );
+                                       />
+                <Route path="/login" element={<Login />} />
+                <Route path="/*" element={
+                  <ProtectedRoute>
+                    <MainContent />
+                  </ProtectedRoute>
+                } />
+            </Routes>
+            </AnimatePresence>
+        </HashRouter>
+      </LanguageProvider>
+    </AuthProvider>
+  );
 };
 
-export default App;
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+  if (loading) {
+    return <div className="flex h-screen w-full items-center justify-center">Chargement...</div>;
+  }
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+  return <>{children}</>;
+}
+
+function AppWrapper() {
+  return (
+    <AuthProvider>
+      <App />
+    </AuthProvider>
+  );
+}
+
+export default AppWrapper;
