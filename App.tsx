@@ -1430,7 +1430,7 @@ const MainContent: React.FC = () => {
                     <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
                         <button 
                             onClick={() => window.location.reload()} 
-                            className="px-6 py-2 text-sm font-medium text-white bg-emerald-600 rounded-lg shadow-sm hover:bg-emerald-700 transition-colors"
+                            className="px-6 py-2 text-sm font-medium text-white bg-blue-600rounded-lg shadow-sm hover:bg-emerald-700 transition-colors"
                         >
                             <span>Réessayer</span>
                         </button>
@@ -1478,7 +1478,7 @@ const MainContent: React.FC = () => {
                 {isSidebarOpen && (
                     <div className="fixed inset-0 z-50 flex md:hidden">
                         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity duration-300 ease-in-out" onClick={() => setSidebarOpen(false)}></div>
-                        <div className="relative flex w-72 max-w-[80%] flex-1 flex-col bg-emerald-600 shadow-2xl animate-slide-in">
+                        <div className="relative flex w-72 max-w-[80%] flex-1 flex-col bg-blue-600shadow-2xl animate-slide-in">
                             <div className="absolute top-0 right-0 -mr-12 pt-4">
                                 <button type="button" className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 focus:outline-none ring-1 ring-white/20" onClick={() => setSidebarOpen(false)}>
                                     <X className="h-6 w-6" />
@@ -1492,7 +1492,7 @@ const MainContent: React.FC = () => {
                     <div className={`flex-1 ${isPosRoute ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'} bg-slate-50 w-full`}>
                         <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-md px-4 py-3 md:hidden border-b border-slate-200 shadow-sm flex items-center justify-between w-full">
                             <div className="flex items-center gap-2">
-                                <div className="h-8 w-8 bg-emerald-600 rounded-lg flex items-center justify-center text-white shadow-sm">
+                                <div className="h-8 w-8 bg-blue-600rounded-lg flex items-center justify-center text-white shadow-sm">
                                     <Files size={18} />
                                 </div>
                                 <h1 className="text-lg font-bold text-emerald-700 tracking-tight">Facturago</h1>
