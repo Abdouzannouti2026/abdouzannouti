@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState } from 'react';
-type Role = 'admin' | 'vendeur';
+type Role = 'admin' | 'vendeur' | 'chef';
 type User = { username: string; role: Role; name: string };
 const AuthContext = createContext<any>(null);
 export const AuthProvider = ({children}:{children:React.ReactNode}) => {
@@ -9,7 +9,7 @@ export const AuthProvider = ({children}:{children:React.ReactNode}) => {
   });
   const login = (u:string,p:string) => {
     let newUser: User | null = null;
-    if(u==='admin' && p==='admin123') newUser={username:'admin', role:'admin', name:'Patron'};
+   if(u==='admin' && p==='admin123') newUser={username:'admin', role:'admin', name:'Patron'};if(u==='chaf@gmail.com' && p==='chaf123') newUser={username:'chaf@gmail.com', role:'chef', name:'Chaf Chef'};
     if(u==='vendeur1' && p==='1234') newUser={username:'vendeur1', role:'vendeur', name:'Vendeur 1'};
     if(u==='vendeur2' && p==='1234') newUser={username:'vendeur2', role:'vendeur', name:'Vendeur 2'};
     if(newUser){ localStorage.setItem('facturago_user', JSON.stringify(newUser)); setUser(newUser); return true; }
