@@ -85,8 +85,12 @@ const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
         { id: 'settings', name: t('settings'), href: '/settings', icon: Settings },
     ];
 
-    // Filter navigation (all visible now since permissions are removed)
-    const filteredNavigation = navigation;
+   // Chef ychouf ghir Vente + Caisse + Stock
+const storedUser = localStorage.getItem('facturago_user');
+const userRole = storedUser ? JSON.parse(storedUser).role : 'admin';
+const isChef = userRole === 'chef';
+const chefAllowed = ['dashboard', 'pos', 'sales', 'payments', 'stock'];
+const filteredNavigation = isChef ? navigation.filter(item => chefAllowed.includes(item.id)) : navigation;
 
     const toggleMenu = (name: string) => {
         setOpenMenu(openMenu === name ? null : name);
