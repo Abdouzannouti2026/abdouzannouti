@@ -34,20 +34,20 @@ import UserProfile from './components/UserProfile';
 
 const LoadingScreen = () => (
     <div className="min-h-screen flex flex-col items-center justify-center bg-white relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-64 h-64 bg-emerald-50 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2"></div>
+        <div className="absolute top-0 left-0 w-64 h-64 bg-Dashboard.tsx-50 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2"></div>
         <div className="absolute bottom-0 right-0 w-64 h-64 bg-blue-50 rounded-full blur-3xl translate-x-1/2 translate-y-1/2"></div>
         <div className="relative z-10 flex flex-col items-center animate-in fade-in zoom-in duration-500">
             <div className="relative mb-8">
-                <div className="absolute inset-0 bg-emerald-200 rounded-2xl blur-xl opacity-40 animate-pulse"></div>
-                <div className="relative h-24 w-24 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center text-white shadow-2xl">
+                <div className="absolute inset-0 bg-Dashboard.tsx-200 rounded-2xl blur-xl opacity-40 animate-pulse"></div>
+                <div className="relative h-24 w-24 bg-gradient-to-br from-Dashboard.tsx-500 to-teal-600 rounded-2xl flex items-center justify-center text-white shadow-2xl">
                     <Files size={48} />
                 </div>
             </div>
             <h1 className="text-3xl font-bold text-slate-800 tracking-tight mb-4"><span>Facturago</span></h1>
             <div className="flex items-center gap-2 mb-2">
-                <div className="h-2 w-2 bg-emerald-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                <div className="h-2 w-2 bg-emerald-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                <div className="h-2 w-2 bg-emerald-500 rounded-full animate-bounce"></div>
+                <div className="h-2 w-2 bg-Dashboard.tsx-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                <div className="h-2 w-2 bg-Dashboard.tsx-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                <div className="h-2 w-2 bg-Dashboard.tsx-500 rounded-full animate-bounce"></div>
             </div>
             <p className="text-sm text-slate-400 font-medium"><span>Chargement de votre espace...</span></p>
         </div>
@@ -1430,7 +1430,7 @@ const MainContent: React.FC = () => {
                     <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
                         <button 
                             onClick={() => window.location.reload()} 
-                            className="px-6 py-2 text-sm font-medium text-white bg-blue-600rounded-lg shadow-sm hover:bg-emerald-700 transition-colors"
+                            className="px-6 py-2 text-sm font-medium text-white bg-blue-600rounded-lg shadow-sm hover:bg-Dashboard.tsx-700 transition-colors"
                         >
                             <span>Réessayer</span>
                         </button>
@@ -1462,15 +1462,15 @@ const MainContent: React.FC = () => {
 
     return (
         <div className="flex flex-col h-screen bg-slate-100 text-neutral-800 overflow-hidden">
-            <div className="bg-emerald-900 text-emerald-50 py-2 px-4 text-center text-[10px] sm:text-xs font-bold z-50 flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-6 shadow-lg border-b border-emerald-800">
+            <div className="bg-Dashboard.tsx-900 text-Dashboard.tsx-50 py-2 px-4 text-center text-[10px] sm:text-xs font-bold z-50 flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-6 shadow-lg border-b border-Dashboard.tsx-800">
                 <div dir="rtl" className="flex items-center gap-1.5 leading-relaxed">
                     <span className="opacity-90">لأي مشكلة أو مساعدة، تواصلوا معنا عبر الواتساب:</span>
-                    <span dir="ltr" className="select-all underline decoration-emerald-500/50 font-mono text-white">+212 708-256858</span>
+                    <span dir="ltr" className="select-all underline decoration-Dashboard.tsx-500/50 font-mono text-white">+212 708-256858</span>
                 </div>
-                <div className="hidden sm:block w-px h-3 bg-emerald-700/50"></div>
+                <div className="hidden sm:block w-px h-3 bg-Dashboard.tsx-700/50"></div>
                 <div className="flex items-center gap-1.5 leading-relaxed">
                     <span className="uppercase tracking-tight opacity-90">Besoin d'aide ? Message WhatsApp au :</span>
-                    <span className="select-all underline decoration-emerald-500/50 font-mono text-white">+212 708-256858</span>
+                    <span className="select-all underline decoration-Dashboard.tsx-500/50 font-mono text-white">+212 708-256858</span>
                 </div>
             </div>
             <div className="flex flex-1 overflow-hidden">
@@ -1495,7 +1495,7 @@ const MainContent: React.FC = () => {
                                 <div className="h-8 w-8 bg-blue-600rounded-lg flex items-center justify-center text-white shadow-sm">
                                     <Files size={18} />
                                 </div>
-                                <h1 className="text-lg font-bold text-emerald-700 tracking-tight">Facturago</h1>
+                                <h1 className="text-lg font-bold text-Dashboard.tsx-700 tracking-tight">Facturago</h1>
                             </div>
                             <button type="button" className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-neutral-600 hover:bg-neutral-100 focus:outline-none" onClick={() => setSidebarOpen(true)}>
                                 <Menu className="h-6 w-6" />
